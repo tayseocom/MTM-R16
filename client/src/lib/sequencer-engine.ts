@@ -495,6 +495,13 @@ export class SequencerEngine {
     this.quantizeValue = value;
   }
 
+  setPartLength(partId: number, lengthBars: number) {
+    const part = this.project.parts.find(p => p.id === partId);
+    if (part) {
+      part.length = Math.max(1, Math.min(64, lengthBars));
+    }
+  }
+
   private quantizeEvents(events: MIDIEvent[], quantize: number): MIDIEvent[] {
     const ticksPerBeat = 24;
     const quantizeTicks = ticksPerBeat * quantize; // Fix: multiply instead of divide

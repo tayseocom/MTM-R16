@@ -214,6 +214,19 @@ export default function Home() {
       setSongModeOpen(true);
       return;
     }
+
+    if (mode === 'length') {
+      const part = sequencerEngine.getCurrentPart();
+      const newLength = prompt(`Enter part length (1-64 bars):`, part.length.toString());
+      if (newLength) {
+        const lengthBars = parseInt(newLength);
+        if (lengthBars >= 1 && lengthBars <= 64) {
+          sequencerEngine.setPartLength(part.id, lengthBars);
+          saveToLocalStorage();
+        }
+      }
+      return;
+    }
     
     const newMode = editMode === mode ? 'none' : mode;
     setEditMode(newMode);
@@ -279,7 +292,6 @@ export default function Home() {
   const getLCDText = () => {
     if (!midiReady) return 'NO MIDI - DEMO MODE';
     if (editMode === 'quantize') return 'QUANTIZE: SELECT VALUE';
-    if (editMode === 'length') return 'LENGTH: ENTER BARS';
     if (editMode === 'part') return 'PART: SELECT NUMBER';
     if (editMode === 'copy') return 'COPY: SELECT DESTINATION';
     if (editMode === 'merge') return 'MERGE: SELECT TRACKS';
