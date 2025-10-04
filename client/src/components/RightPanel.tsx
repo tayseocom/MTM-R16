@@ -4,7 +4,7 @@ interface RightPanelProps {
   loopEnabled?: boolean;
   midiEchoEnabled?: boolean;
   metroEnabled?: boolean;
-  clockEnabled?: boolean;
+  clockMode?: 'off' | 'send' | 'receive';
   midiFilterEnabled?: boolean;
   tempo?: number;
   onLoopClick?: () => void;
@@ -19,7 +19,7 @@ export default function RightPanel({
   loopEnabled,
   midiEchoEnabled,
   metroEnabled,
-  clockEnabled,
+  clockMode = 'off',
   midiFilterEnabled,
   tempo = 120,
   onLoopClick,
@@ -29,6 +29,21 @@ export default function RightPanel({
   onMidiFilterClick,
   onTempoClick
 }: RightPanelProps) {
+  const getClockLabel = () => {
+    switch (clockMode) {
+      case 'send': return 'CLOCK SEND';
+      case 'receive': return 'CLOCK RCV';
+      default: return 'CLOCK';
+    }
+  };
+
+  const getClockLED = () => {
+    switch (clockMode) {
+      case 'send': return 'green';
+      case 'receive': return 'amber';
+      default: return 'off';
+    }
+  };
   return (
     <div className="flex flex-col gap-2">
       <HardwareButton 
@@ -50,10 +65,10 @@ export default function RightPanel({
         led={metroEnabled ? 'green' : 'off'}
       />
       <HardwareButton 
-        label="CLOCK" 
+        label={getClockLabel()} 
         onClick={onClockClick}
-        active={clockEnabled}
-        led={clockEnabled ? 'green' : 'off'}
+        active={clockMode !== 'off'}
+        led={getClockLED() as 'red' | 'green' | 'amber' | 'orange' | 'off'}
       />
       <HardwareButton 
         label="MIDI FILTER" 

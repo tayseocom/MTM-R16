@@ -14,6 +14,7 @@ export class SequencerEngine {
   private selectedOutput: MIDIOutput | null = null;
   private quantizeValue = 0; // 0 = off, 1/4, 1/8, 1/16, etc.
   private midiThruEnabled = false;
+  private clockMode: 'off' | 'send' | 'receive' = 'off';
 
   constructor() {
     this.project = this.createEmptyProject();
@@ -77,9 +78,32 @@ export class SequencerEngine {
     this.midiThruEnabled = enabled;
   }
 
+  setClockMode(mode: 'off' | 'send' | 'receive') {
+    this.clockMode = mode;
+    
+    if (mode === 'send' && this.isPlaying) {
+      midiManager.startClockSend(this.project.tempo, midiManager.getOutputs());
+    } else if (mode === 'receive') {
+      midiManager.setClockListener((tempo) => {
+        this.setTempo(tempo);
+      });
+    } else {
+      midiManager.stopClockSend();
+    }
+  }
+
+  getClockMode() {
+    return this.clockMode;
+  }
+
   setTempo(tempo: number) {
     this.project.tempo = tempo;
     audioClock.setTempo(tempo);
+    
+    // Update MIDI clock tempo if sending
+    if (this.clockMode === 'send') {
+      midiManager.updateClockTempo(tempo);
+    }
   }
 
   startRecording(trackIds: number[]) {
@@ -197,6 +221,11 @@ export class SequencerEngine {
     this.currentTick = 0;
     this.schedulePlaybackEvents(trackIds);
     audioClock.start();
+    
+    // Start MIDI clock if in send mode
+    if (this.clockMode === 'send') {
+      midiManager.startClockSend(this.project.tempo, midiManager.getOutputs());
+    }
   }
 
   private schedulePlaybackEvents(trackIds?: number[]) {
@@ -271,6 +300,11 @@ export class SequencerEngine {
     this.isRecording = false;
     audioClock.stop();
     midiManager.allNotesOff();
+    
+    // Stop MIDI clock if sending
+    if (this.clockMode === 'send') {
+      midiManager.stopClockSend();
+    }
   }
 
   setOutput(output: MIDIOutput | null) {

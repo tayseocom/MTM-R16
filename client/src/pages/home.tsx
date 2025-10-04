@@ -30,6 +30,7 @@ export default function Home() {
   const [selectedOutput, setSelectedOutput] = useState<string>('');
   const [midiReady, setMidiReady] = useState(false);
   const [midiEchoEnabled, setMidiEchoEnabled] = useState(false);
+  const [clockMode, setClockMode] = useState<'off' | 'send' | 'receive'>('off');
 
   useEffect(() => {
     sequencerEngine.initialize().then((ready) => {
@@ -309,6 +310,7 @@ export default function Home() {
               loopEnabled={loopEnabled}
               metroEnabled={metroEnabled}
               midiEchoEnabled={midiEchoEnabled}
+              clockMode={clockMode}
               tempo={tempo}
               onLoopClick={() => setLoopEnabled(!loopEnabled)}
               onMetroClick={() => {
@@ -330,7 +332,13 @@ export default function Home() {
                 setMidiEchoEnabled(newEchoState);
                 sequencerEngine.setMidiThru(newEchoState);
               }}
-              onClockClick={() => console.log('Clock toggled')}
+              onClockClick={() => {
+                const modes: ('off' | 'send' | 'receive')[] = ['off', 'send', 'receive'];
+                const currentIndex = modes.indexOf(clockMode);
+                const nextMode = modes[(currentIndex + 1) % modes.length];
+                setClockMode(nextMode);
+                sequencerEngine.setClockMode(nextMode);
+              }}
               onMidiFilterClick={() => console.log('MIDI Filter toggled')}
             />
           </div>

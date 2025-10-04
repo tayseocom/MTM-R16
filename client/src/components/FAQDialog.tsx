@@ -79,6 +79,10 @@ export function FAQDialog() {
     {
       question: "What does MIDI ECHO do?",
       answer: "MIDI ECHO (also called MIDI Thru) routes incoming MIDI directly to the output. When enabled (green LED), you can hear what you're playing on your synthesizer in real-time, even when not recording. This is essential for monitoring while recording."
+    },
+    {
+      question: "How does MIDI Clock work?",
+      answer: "Click the CLOCK button to cycle through modes:\n• OFF: No MIDI clock (default)\n• SEND (green LED): MTM-R16 sends MIDI clock to sync external devices like drum machines\n• RECEIVE (amber LED): MTM-R16 syncs to incoming MIDI clock from external master\n\nMIDI clock runs at 24 pulses per quarter note (ppqn) and allows multiple devices to stay in perfect sync."
     }
   ];
 
