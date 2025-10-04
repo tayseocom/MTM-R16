@@ -337,7 +337,7 @@ export default function Home() {
           <div className="flex gap-2 items-center">
             <FAQDialog />
             <Button 
-              variant="outline" 
+              variant="default" 
               onClick={handleLoadProject}
               data-testid="button-load"
             >
@@ -345,7 +345,7 @@ export default function Home() {
               Load
             </Button>
             <Button 
-              variant="outline" 
+              variant="default" 
               onClick={handleSaveProject}
               data-testid="button-save"
             >
