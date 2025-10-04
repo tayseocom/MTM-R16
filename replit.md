@@ -223,3 +223,56 @@ The piano roll editor is a fully functional note editor with canvas-based render
 - Note edge handle: `#0e0f11` (dark)
 - Hover outline: Semi-transparent white
 - Playhead: `#9bf26b` (bright green)
+
+## Song Mode
+
+### Architecture
+
+Song mode provides step-based sequencing with explicit control over part order, repeats, and per-step overrides.
+
+**Data Model**:
+- **Song**: Named container with tempo, ordered steps array, loop settings (loopEnabled, loopStart, loopEnd)
+- **SongStep**: Individual step with partId (reference to Part), repeats (1-99), optional trackMask (bit flags for mute overrides), optional transpose (-12 to +12)
+- **StepRuntime**: Playback state tracking current step index and repeat pass
+
+**SongPlayer Class** (`client/src/lib/song-player.ts`):
+- Manages song playback state and step progression
+- `play(songId)`: Loads song from project and starts playback with all 16 tracks
+- `stop()`: Resets song state and clears overrides
+- `onPartBoundary()`: Advances to next repeat or next step when part completes
+- Applies step-scoped overrides (transpose, trackMask) to sequencer engine
+- Tracks current step runtime (idx, pass) for repeat handling
+- Emits state changes to listeners for UI updates
+
+**SequencerEngine Integration**:
+- `queueNextPart(partId)`: Schedules part change at next measure boundary
+- `setStepTrackMask(mask)`: Applies step-scoped track mute overrides
+- `setStepTranspose(semitones)`: Applies step-scoped transpose
+- Part boundary listener system triggers song step advancement
+- Mask precedence: live mutes > step mask > part mutes
+
+**UI Components**:
+- **SongModeDialog** (`client/src/components/SongModeDialog.tsx`): Modal dialog with song list and editor
+- **SongEditor** (`client/src/components/SongEditor.tsx`): Step list table with columns for Part, Repeats, Mask, Transpose, plus chain overview timeline
+- Song creation, editing, deletion, and "Set as Current Song" functionality
+- Drag-and-drop step reordering
+- Visual indicators for current step and loop ranges
+
+**State Management**:
+- Full project stored in React state in Home component
+- Song updates flow: SongEditor → SongModeDialog → Home component → sequencerEngine
+- Project state updates trigger re-renders for immediate UI feedback
+- Transport controls check currentSong state to determine playback mode
+
+**Playback Behavior**:
+- In song mode, all 16 tracks are potentially playing (filtered by step masks)
+- Each step plays its referenced part with specified number of repeats
+- Step-scoped overrides (transpose, trackMask) apply during step playback only
+- Part boundaries trigger step advancement via callback system
+- Loop-enabled songs repeat between loopStart and loopEnd step indices
+- Song end stops transport unless loop is enabled
+
+**ID Generation**:
+- Song IDs: `sng_` prefix with nanoid (e.g., `sng_abc123`)
+- Step IDs: `sst_` prefix with nanoid (e.g., `sst_xyz789`)
+- Utility functions in `shared/id-utils.ts`
