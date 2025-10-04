@@ -1,5 +1,5 @@
-import { useEffect, useRef, useState, useCallback } from 'react';
-import { MIDIEvent } from '@shared/schema';
+import { useEffect, useRef, useState } from 'react';
+import type { MIDIEvent } from '@shared/schema';
 
 const PPQ = 96;
 const BEATS_PER_BAR = 4;
@@ -19,29 +19,30 @@ interface PianoRollProps {
   events: MIDIEvent[];
   onEventsChange: (events: MIDIEvent[]) => void;
   currentPosition?: number;
+  liveNotes?: Map<number, { velocity: number; timestamp: number }>;
 }
 
 type Tool = 'select' | 'draw' | 'erase';
 
 interface DragState {
-  mode: 'move' | 'resize' | 'draw' | 'draw-move';
+  mode: 'move' | 'resize' | 'draw';
   note: PianoNote;
   startX: number;
   startY: number;
-  startT: number;
-  startDur: number;
-  startNN: number;
-  startSelSnapshot: Record<string, { t: number; nn: number }>;
+  startT?: number;
+  startDur?: number;
+  startSelSnapshot?: Record<string, { t: number; nn: number }>;
 }
 
-export default function PianoRoll({ events, onEventsChange, currentPosition = 0 }: PianoRollProps) {
+export default function PianoRoll({ events, onEventsChange, currentPosition = 0, liveNotes }: PianoRollProps) {
   const gridRef = useRef<HTMLCanvasElement>(null);
   const pianoRef = useRef<HTMLCanvasElement>(null);
   const overlayRef = useRef<HTMLCanvasElement>(null);
   const wrapRef = useRef<HTMLDivElement>(null);
+  const nextIdRef = useRef(1);
 
   const [tool, setTool] = useState<Tool>('select');
-  const [snapDiv, setSnapDiv] = useState(6);
+  const [snapDiv, setSnapDiv] = useState(6); // 1/16
   const [barsVisible, setBarsVisible] = useState(16);
   const [keysVisible, setKeysVisible] = useState(24);
   const [scrollTicks, setScrollTicks] = useState(0);
@@ -51,20 +52,15 @@ export default function PianoRoll({ events, onEventsChange, currentPosition = 0 
   const [hover, setHover] = useState<{ note: PianoNote; edge: boolean } | null>(null);
   const [dragging, setDragging] = useState<DragState | null>(null);
   const [isMouseDown, setIsMouseDown] = useState(false);
-  const nextIdRef = useRef(1);
 
   const dpr = window.devicePixelRatio || 1;
 
+  // Convert MIDI events to notes
   useEffect(() => {
-    const convertedNotes = eventsToNotes(events);
-    setNotes(convertedNotes);
-  }, [events]);
-
-  function eventsToNotes(evs: MIDIEvent[]): PianoNote[] {
     const noteStacks = new Map<number, MIDIEvent[]>();
     const result: PianoNote[] = [];
-    
-    const sortedEvents = [...evs].sort((a, b) => {
+
+    const sortedEvents = [...events].sort((a, b) => {
       if (a.timestamp !== b.timestamp) return a.timestamp - b.timestamp;
       const aIsNoteOff = a.type === 'noteOff' || (a.type === 'noteOn' && a.velocity === 0);
       const bIsNoteOff = b.type === 'noteOff' || (b.type === 'noteOn' && b.velocity === 0);
@@ -72,7 +68,7 @@ export default function PianoRoll({ events, onEventsChange, currentPosition = 0 
       if (!aIsNoteOff && bIsNoteOff) return 1;
       return 0;
     });
-    
+
     sortedEvents.forEach(e => {
       if (e.type === 'noteOn' && e.note !== undefined && e.velocity && e.velocity > 0) {
         if (!noteStacks.has(e.note)) {
@@ -99,10 +95,9 @@ export default function PianoRoll({ events, onEventsChange, currentPosition = 0 
 
     noteStacks.forEach((stack, nn) => {
       stack.forEach(noteOn => {
-        const t = Math.round(noteOn.timestamp);
         result.push({
           id: 'n' + (nextIdRef.current++),
-          t,
+          t: Math.round(noteOn.timestamp),
           dur: PPQ / 4,
           nn,
           vel: noteOn.velocity || 100,
@@ -111,10 +106,11 @@ export default function PianoRoll({ events, onEventsChange, currentPosition = 0 
       });
     });
 
-    return result.sort((a, b) => a.t - b.t);
-  }
+    setNotes(result.sort((a, b) => a.t - b.t));
+  }, [events]);
 
-  function notesToEvents(nts: PianoNote[]): MIDIEvent[] {
+  // Convert notes to MIDI events
+  const notesToEvents = (nts: PianoNote[]): MIDIEvent[] => {
     const evs: MIDIEvent[] = [];
     nts.forEach(n => {
       evs.push({
@@ -133,73 +129,53 @@ export default function PianoRoll({ events, onEventsChange, currentPosition = 0 
       });
     });
     return evs.sort((a, b) => a.timestamp - b.timestamp);
-  }
+  };
 
-  const resize = useCallback(() => {
-    if (!wrapRef.current || !gridRef.current || !pianoRef.current || !overlayRef.current) return;
-    
-    const { clientWidth: w, clientHeight: h } = wrapRef.current;
-    
-    [gridRef.current, pianoRef.current, overlayRef.current].forEach(canvas => {
-      canvas.width = Math.floor(w * dpr);
-      canvas.height = Math.floor(h * dpr);
-      canvas.style.width = w + 'px';
-      canvas.style.height = h + 'px';
-    });
-    
-    draw();
-  }, [dpr, barsVisible, keysVisible, scrollTicks, scrollKey, notes, selection, hover, currentPosition]);
-
-  useEffect(() => {
-    resize();
-    window.addEventListener('resize', resize);
-    return () => window.removeEventListener('resize', resize);
-  }, [resize]);
-
-  function barsToPx() {
+  // Coordinate conversion
+  const barsToPx = () => {
     if (!gridRef.current) return 0;
     return (gridRef.current.width - PIANO_WIDTH * dpr) / barsVisible;
-  }
+  };
 
-  function ticksToX(t: number) {
+  const ticksToX = (t: number) => {
     const pxPerBar = barsToPx();
     const rel = (t - scrollTicks) / TICKS_PER_BAR;
     return Math.round(PIANO_WIDTH * dpr + rel * pxPerBar);
-  }
+  };
 
-  function xToTicks(x: number) {
+  const xToTicks = (x: number) => {
     const pxPerBar = barsToPx();
     const rel = (x - PIANO_WIDTH * dpr) / pxPerBar;
     return Math.round(scrollTicks + rel * TICKS_PER_BAR);
-  }
+  };
 
-  function keyHeight() {
+  const keyHeight = () => {
     if (!gridRef.current) return 0;
     return gridRef.current.height / keysVisible;
-  }
+  };
 
-  function nnToY(nn: number) {
+  const nnToY = (nn: number) => {
     if (!gridRef.current) return 0;
     const rel = nn - scrollKey;
     return Math.round(gridRef.current.height - (rel + 1) * keyHeight());
-  }
+  };
 
-  function yToNN(y: number) {
+  const yToNN = (y: number) => {
     if (!gridRef.current) return 60;
     const rel = Math.floor((gridRef.current.height - y) / keyHeight());
     return scrollKey + rel;
-  }
+  };
 
-  function snapTicks(t: number, bypass = false) {
-    if (bypass || snapDiv === 0) return t;
+  const snapTicks = (t: number) => {
+    if (snapDiv === 0) return t;
     return Math.round(t / snapDiv) * snapDiv;
-  }
+  };
 
-  function isBlack(nn: number) {
+  const isBlack = (nn: number) => {
     return [1, 3, 6, 8, 10].includes(nn % 12);
-  }
+  };
 
-  function noteAt(x: number, y: number) {
+  const noteAt = (x: number, y: number) => {
     const t = xToTicks(x);
     const nn = yToNN(y);
     const pad = Math.max(4, keyHeight() * 0.15);
@@ -215,9 +191,20 @@ export default function PianoRoll({ events, onEventsChange, currentPosition = 0 
       }
     }
     return null;
-  }
+  };
 
-  function drawGrid() {
+  const roundRect = (ctx: CanvasRenderingContext2D, x: number, y: number, w: number, h: number, r: number) => {
+    ctx.beginPath();
+    ctx.moveTo(x + r, y);
+    ctx.arcTo(x + w, y, x + w, y + h, r);
+    ctx.arcTo(x + w, y + h, x, y + h, r);
+    ctx.arcTo(x, y + h, x, y, r);
+    ctx.arcTo(x, y, x + w, y, r);
+    ctx.closePath();
+  };
+
+  // Drawing functions
+  const drawGrid = () => {
     if (!gridRef.current) return;
     const ctx = gridRef.current.getContext('2d');
     if (!ctx) return;
@@ -225,7 +212,7 @@ export default function PianoRoll({ events, onEventsChange, currentPosition = 0 
     ctx.save();
     ctx.clearRect(0, 0, gridRef.current.width, gridRef.current.height);
 
-    ctx.fillStyle = 'hsl(220, 6%, 18%)';
+    ctx.fillStyle = '#2a2d31';
     ctx.fillRect(0, 0, gridRef.current.width, gridRef.current.height);
 
     const pxPerBar = barsToPx();
@@ -235,7 +222,7 @@ export default function PianoRoll({ events, onEventsChange, currentPosition = 0 
     for (let bar = startBar; bar <= endBar; bar++) {
       const x = Math.round(PIANO_WIDTH * dpr + (bar - startBar) * pxPerBar);
       
-      ctx.strokeStyle = 'rgba(155, 242, 107, 0.3)';
+      ctx.strokeStyle = '#3a3e44';
       ctx.lineWidth = 1 * dpr;
       ctx.beginPath();
       ctx.moveTo(x, 0);
@@ -244,14 +231,14 @@ export default function PianoRoll({ events, onEventsChange, currentPosition = 0 
 
       for (let beat = 1; beat < BEATS_PER_BAR; beat++) {
         const xb = Math.round(x + beat * (pxPerBar / BEATS_PER_BAR));
-        ctx.strokeStyle = 'rgba(155, 242, 107, 0.15)';
+        ctx.strokeStyle = '#2e3237';
         ctx.beginPath();
         ctx.moveTo(xb, 0);
         ctx.lineTo(xb, gridRef.current.height);
         ctx.stroke();
       }
 
-      ctx.fillStyle = 'hsl(220, 15%, 60%)';
+      ctx.fillStyle = '#9aa1aa';
       ctx.font = `${12 * dpr}px monospace`;
       ctx.textAlign = 'left';
       ctx.textBaseline = 'top';
@@ -262,14 +249,14 @@ export default function PianoRoll({ events, onEventsChange, currentPosition = 0 
     for (let i = 0; i < keysVisible; i++) {
       const nn = scrollKey + i;
       const y = Math.round(gridRef.current.height - (i + 1) * kh);
-      ctx.fillStyle = isBlack(nn) ? 'hsl(220, 10%, 12%)' : 'hsl(220, 6%, 18%)';
+      ctx.fillStyle = isBlack(nn) ? '#272a2f' : '#2f3339';
       ctx.fillRect(PIANO_WIDTH * dpr, y, gridRef.current.width - PIANO_WIDTH * dpr, kh);
     }
 
     ctx.restore();
-  }
+  };
 
-  function drawPiano() {
+  const drawPiano = () => {
     if (!pianoRef.current) return;
     const ctx = pianoRef.current.getContext('2d');
     if (!ctx) return;
@@ -278,18 +265,18 @@ export default function PianoRoll({ events, onEventsChange, currentPosition = 0 
     ctx.clearRect(0, 0, pianoRef.current.width, pianoRef.current.height);
     
     const kh = keyHeight();
-    ctx.fillStyle = 'hsl(220, 10%, 12%)';
+    ctx.fillStyle = '#222429';
     ctx.fillRect(0, 0, PIANO_WIDTH * dpr, pianoRef.current.height);
 
     for (let i = 0; i < keysVisible; i++) {
       const nn = scrollKey + i;
       const y = Math.round(pianoRef.current.height - (i + 1) * kh);
       
-      ctx.fillStyle = isBlack(nn) ? 'hsl(220, 10%, 8%)' : 'hsl(220, 6%, 15%)';
+      ctx.fillStyle = isBlack(nn) ? '#13151a' : '#1e2126';
       ctx.fillRect(0, y, PIANO_WIDTH * dpr, kh);
 
       if (nn % 12 === 0) {
-        ctx.fillStyle = 'hsl(220, 15%, 80%)';
+        ctx.fillStyle = '#9aa1aa';
         ctx.font = `${11 * dpr}px monospace`;
         ctx.textAlign = 'left';
         ctx.textBaseline = 'middle';
@@ -297,7 +284,7 @@ export default function PianoRoll({ events, onEventsChange, currentPosition = 0 
         ctx.fillText('C' + octave, 6 * dpr, y + kh / 2);
       }
 
-      ctx.strokeStyle = 'hsl(220, 10%, 5%)';
+      ctx.strokeStyle = '#000';
       ctx.lineWidth = dpr;
       ctx.beginPath();
       ctx.moveTo(0, y);
@@ -306,9 +293,9 @@ export default function PianoRoll({ events, onEventsChange, currentPosition = 0 
     }
 
     ctx.restore();
-  }
+  };
 
-  function drawNotes() {
+  const drawNotes = () => {
     if (!overlayRef.current) return;
     const ctx = overlayRef.current.getContext('2d');
     if (!ctx) return;
@@ -325,11 +312,11 @@ export default function PianoRoll({ events, onEventsChange, currentPosition = 0 
       const y = nnToY(n.nn);
       const sel = selection.has(n.id);
       
-      ctx.fillStyle = sel ? 'hsl(30, 90%, 50%)' : 'hsl(var(--primary))';
+      ctx.fillStyle = sel ? '#ffcc66' : '#76d275';
       roundRect(ctx, x, y + 3, w, Math.max(6, kh - 6), r);
       ctx.fill();
       
-      ctx.fillStyle = 'hsl(220, 15%, 15%)';
+      ctx.fillStyle = '#0e0f11';
       ctx.fillRect(x + w - 3 * dpr, y + 3, 3 * dpr, Math.max(6, kh - 6));
     }
 
@@ -338,15 +325,35 @@ export default function PianoRoll({ events, onEventsChange, currentPosition = 0 
       const x = ticksToX(n.t);
       const w = Math.max(4, ticksToX(n.t + n.dur) - x);
       const y = nnToY(n.nn);
-      ctx.strokeStyle = 'rgba(255, 255, 255, 0.6)';
+      ctx.strokeStyle = '#ffffffaa';
       ctx.lineWidth = 2 * dpr;
       roundRect(ctx, x - 1, y + 2, w + 2, Math.max(6, kh - 4), r);
       ctx.stroke();
     }
 
+    // Draw live MIDI input notes
+    if (liveNotes && liveNotes.size > 0) {
+      const kh = keyHeight();
+      liveNotes.forEach((noteData, nn) => {
+        const y = nnToY(nn);
+        const x = currentPosition > 0 ? ticksToX(currentPosition) : PIANO_WIDTH * dpr + 10;
+        const w = 40 * dpr;
+        
+        // Draw live note with pulsing effect
+        const alpha = 0.3 + (Math.sin(Date.now() / 200) + 1) / 4;
+        ctx.fillStyle = `rgba(155, 242, 107, ${alpha})`;
+        ctx.fillRect(x - w/2, y + 3, w, Math.max(6, kh - 6));
+        
+        // Draw border
+        ctx.strokeStyle = '#9bf26b';
+        ctx.lineWidth = 2 * dpr;
+        ctx.strokeRect(x - w/2, y + 3, w, Math.max(6, kh - 6));
+      });
+    }
+
     if (currentPosition > 0) {
       const x = ticksToX(currentPosition);
-      ctx.strokeStyle = 'hsl(var(--primary))';
+      ctx.strokeStyle = '#9bf26b';
       ctx.lineWidth = 2 * dpr;
       ctx.beginPath();
       ctx.moveTo(x, 0);
@@ -355,29 +362,47 @@ export default function PianoRoll({ events, onEventsChange, currentPosition = 0 
     }
 
     ctx.restore();
-  }
+  };
 
-  function roundRect(ctx: CanvasRenderingContext2D, x: number, y: number, w: number, h: number, r: number) {
-    ctx.beginPath();
-    ctx.moveTo(x + r, y);
-    ctx.arcTo(x + w, y, x + w, y + h, r);
-    ctx.arcTo(x + w, y + h, x, y + h, r);
-    ctx.arcTo(x, y + h, x, y, r);
-    ctx.arcTo(x, y, x + w, y, r);
-    ctx.closePath();
-  }
-
-  function draw() {
+  const draw = () => {
     drawGrid();
     drawPiano();
     drawNotes();
-  }
+  };
 
+  // Resize handler
   useEffect(() => {
-    draw();
-  }, [notes, selection, hover, barsVisible, keysVisible, scrollTicks, scrollKey, currentPosition]);
+    const resize = () => {
+      if (!wrapRef.current || !gridRef.current || !pianoRef.current || !overlayRef.current) return;
+      
+      const { clientWidth: w, clientHeight: h } = wrapRef.current;
+      [gridRef.current, pianoRef.current, overlayRef.current].forEach(c => {
+        c.width = Math.floor(w * dpr);
+        c.height = Math.floor(h * dpr);
+        c.style.width = w + 'px';
+        c.style.height = h + 'px';
+      });
+      draw();
+    };
 
-  const handleMouseMove = useCallback((e: React.MouseEvent<HTMLCanvasElement>) => {
+    resize();
+    window.addEventListener('resize', resize);
+    return () => window.removeEventListener('resize', resize);
+  }, [barsVisible, keysVisible, scrollTicks, scrollKey, notes, selection, hover, currentPosition, liveNotes]);
+
+  // Animate live notes
+  useEffect(() => {
+    if (!liveNotes || liveNotes.size === 0) return;
+    
+    const animInterval = setInterval(() => {
+      drawNotes();
+    }, 50);
+    
+    return () => clearInterval(animInterval);
+  }, [liveNotes]);
+
+  // Mouse handlers
+  const handleMouseMove = (e: React.MouseEvent<HTMLCanvasElement>) => {
     if (!overlayRef.current) return;
     const rect = overlayRef.current.getBoundingClientRect();
     const x = (e.clientX - rect.left) * dpr;
@@ -388,33 +413,49 @@ export default function PianoRoll({ events, onEventsChange, currentPosition = 0 
     if (isMouseDown && dragging) {
       const { mode, note, startX, startY, startT, startSelSnapshot } = dragging;
       
-      if (mode === 'move' || mode === 'draw-move') {
+      if (mode === 'move') {
         const dtTicks = Math.round((x - startX) / (barsToPx() / TICKS_PER_BAR));
         const dnn = Math.round((startY - y) / keyHeight());
         
-        setNotes(prev => prev.map(n => {
-          if (selection.has(n.id) && startSelSnapshot[n.id]) {
-            let newT = startSelSnapshot[n.id].t + dtTicks;
+        setNotes(prev => {
+          const updated = [...prev];
+          for (const id of Array.from(selection)) {
+            const n = updated.find(n => n.id === id);
+            if (!n || !startSelSnapshot) continue;
+            let newT = startSelSnapshot[id].t + dtTicks;
             if (!e.altKey) newT = snapTicks(newT);
-            return { ...n, t: Math.max(0, newT), nn: startSelSnapshot[n.id].nn + dnn };
+            n.t = Math.max(0, newT);
+            n.nn = startSelSnapshot[id].nn + dnn;
           }
-          return n;
-        }));
+          return updated;
+        });
       } else if (mode === 'resize') {
         let t2 = xToTicks(x);
         if (!e.altKey) t2 = snapTicks(t2);
-        const newDur = Math.max(2, t2 - startT);
-        setNotes(prev => prev.map(n => n === note ? { ...n, dur: newDur } : n));
+        setNotes(prev => {
+          const updated = [...prev];
+          const n = updated.find(n => n.id === note.id);
+          if (n && startT !== undefined) {
+            n.dur = Math.max(2, t2 - startT);
+          }
+          return updated;
+        });
       } else if (mode === 'draw') {
         let t2 = xToTicks(x);
         if (!e.altKey) t2 = snapTicks(t2);
-        const newDur = Math.max(2, t2 - startT);
-        setNotes(prev => prev.map(n => n === note ? { ...n, dur: newDur } : n));
+        setNotes(prev => {
+          const updated = [...prev];
+          const n = updated.find(n => n.id === note.id);
+          if (n && startT !== undefined) {
+            n.dur = Math.max(2, t2 - startT);
+          }
+          return updated;
+        });
       }
     }
-  }, [isMouseDown, dragging, dpr, selection, snapDiv]);
+  };
 
-  const handleMouseDown = useCallback((e: React.MouseEvent<HTMLCanvasElement>) => {
+  const handleMouseDown = (e: React.MouseEvent<HTMLCanvasElement>) => {
     if (!overlayRef.current) return;
     const rect = overlayRef.current.getBoundingClientRect();
     const x = (e.clientX - rect.left) * dpr;
@@ -436,111 +477,144 @@ export default function PianoRoll({ events, onEventsChange, currentPosition = 0 
     }
 
     if (tool === 'draw') {
-      if (!hit) {
-        let t = xToTicks(x);
-        const nn = yToNN(y);
-        if (!e.altKey) t = snapTicks(t);
-        const newNote: PianoNote = {
-          id: 'n' + (nextIdRef.current++),
-          t: Math.max(0, t),
-          dur: snapDiv || 12,
-          nn,
-          vel: 96,
-          ch: 0
-        };
-        setNotes(prev => [...prev, newNote]);
-        setSelection(new Set([newNote.id]));
-        setDragging({
-          mode: 'draw',
-          note: newNote,
-          startX: x,
-          startY: y,
-          startT: newNote.t,
-          startDur: newNote.dur,
-          startNN: newNote.nn,
-          startSelSnapshot: { [newNote.id]: { t: newNote.t, nn: newNote.nn } }
-        });
-      }
+      let t0 = xToTicks(x);
+      if (!e.altKey) t0 = snapTicks(t0);
+      const nn = yToNN(y);
+      const newNote: PianoNote = {
+        id: 'n' + (nextIdRef.current++),
+        t: Math.max(0, t0),
+        dur: Math.max(12, PPQ / 4),
+        nn,
+        vel: 96,
+        ch: 1
+      };
+      setNotes(prev => [...prev, newNote]);
+      setSelection(new Set([newNote.id]));
+      setDragging({ mode: 'draw', note: newNote, startX: x, startY: y, startT: t0 });
       return;
     }
 
-    if (tool === 'select') {
-      if (hit) {
-        if (hit.edge) {
-          setDragging({
-            mode: 'resize',
-            note: hit.note,
-            startX: x,
-            startY: y,
-            startT: hit.note.t,
-            startDur: hit.note.dur,
-            startNN: hit.note.nn,
-            startSelSnapshot: {}
-          });
-        } else {
-          if (!selection.has(hit.note.id) && !e.shiftKey) {
-            setSelection(new Set([hit.note.id]));
-          } else if (e.shiftKey) {
-            setSelection(prev => {
-              const next = new Set(prev);
-              if (next.has(hit.note.id)) {
-                next.delete(hit.note.id);
-              } else {
-                next.add(hit.note.id);
-              }
-              return next;
-            });
-          }
-          
-          const snapshot: Record<string, { t: number; nn: number }> = {};
-          notes.forEach(n => {
-            if (selection.has(n.id) || n === hit.note) {
-              snapshot[n.id] = { t: n.t, nn: n.nn };
-            }
-          });
-          
-          setDragging({
-            mode: 'move',
-            note: hit.note,
-            startX: x,
-            startY: y,
-            startT: hit.note.t,
-            startDur: hit.note.dur,
-            startNN: hit.note.nn,
-            startSelSnapshot: snapshot
-          });
-        }
-      } else {
-        setSelection(new Set());
+    if (hit && hit.note) {
+      const n = hit.note;
+      if (!e.shiftKey && !selection.has(n.id)) {
+        setSelection(new Set([n.id]));
+      } else if (e.shiftKey && selection.has(n.id)) {
+        setSelection(prev => {
+          const next = new Set(prev);
+          next.delete(n.id);
+          return next;
+        });
+      } else if (e.shiftKey) {
+        setSelection(prev => new Set([...Array.from(prev), n.id]));
       }
+      
+      if (hit.edge) {
+        setDragging({ mode: 'resize', note: n, startX: x, startY: y, startT: n.t, startDur: n.dur });
+      } else {
+        const snap: Record<string, { t: number; nn: number }> = {};
+        for (const id of Array.from(selection)) {
+          const note = notes.find(n => n.id === id);
+          if (note) snap[id] = { t: note.t, nn: note.nn };
+        }
+        setDragging({ mode: 'move', note: n, startX: x, startY: y, startSelSnapshot: snap });
+      }
+    } else {
+      if (!e.shiftKey) setSelection(new Set());
     }
-  }, [tool, dpr, selection, notes, snapDiv]);
+  };
 
-  const handleMouseUp = useCallback(() => {
+  const handleMouseUp = () => {
     setIsMouseDown(false);
     setDragging(null);
-    onEventsChange(notesToEvents(notes));
-  }, [notes, onEventsChange]);
-
-  const handleWheel = useCallback((e: React.WheelEvent) => {
-    e.preventDefault();
     
+    // Emit changes
+    onEventsChange(notesToEvents(notes));
+  };
+
+  const handleWheel = (e: React.WheelEvent<HTMLCanvasElement>) => {
     if (e.shiftKey) {
-      setBarsVisible(prev => Math.max(4, Math.min(64, prev + (e.deltaY > 0 ? 1 : -1))));
-    } else if (e.altKey) {
-      setScrollTicks(prev => Math.max(0, prev + (e.deltaY > 0 ? TICKS_PER_BAR : -TICKS_PER_BAR)));
-    } else {
-      setScrollKey(prev => Math.max(0, Math.min(108, prev + (e.deltaY > 0 ? -1 : 1))));
+      setBarsVisible(prev => Math.min(64, Math.max(1, prev + Math.sign(e.deltaY))));
+      return;
     }
-  }, []);
+    if (e.altKey) {
+      setScrollTicks(prev => Math.max(0, prev + Math.sign(e.deltaY) * TICKS_PER_BAR));
+      return;
+    }
+    setScrollKey(prev => Math.max(0, prev + Math.sign(e.deltaY) * 2));
+  };
+
+  // Keyboard handlers
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'v' || e.key === 'V') setTool('select');
+      if (e.key === 'b' || e.key === 'B') setTool('draw');
+      if (e.key === 'e' || e.key === 'E') setTool('erase');
+      
+      if (e.key === 'Backspace' || e.key === 'Delete') {
+        setNotes(prev => prev.filter(n => !selection.has(n.id)));
+        setSelection(new Set());
+        onEventsChange(notesToEvents(notes.filter(n => !selection.has(n.id))));
+      }
+      
+      if (e.key === 'q' || e.key === 'Q') {
+        setNotes(prev => {
+          const updated = [...prev];
+          for (const id of Array.from(selection)) {
+            const n = updated.find(m => m.id === id);
+            if (n) {
+              n.t = snapTicks(n.t);
+              const end = snapTicks(n.t + n.dur);
+              n.dur = Math.max(2, end - n.t);
+            }
+          }
+          return updated;
+        });
+        onEventsChange(notesToEvents(notes));
+      }
+      
+      if (e.key === 'ArrowUp' || e.key === 'ArrowDown') {
+        const semi = e.shiftKey ? (e.key === 'ArrowUp' ? 12 : -12) : (e.key === 'ArrowUp' ? 1 : -1);
+        setNotes(prev => {
+          const updated = [...prev];
+          for (const id of Array.from(selection)) {
+            const n = updated.find(m => m.id === id);
+            if (n) n.nn = Math.max(0, Math.min(127, n.nn + semi));
+          }
+          return updated;
+        });
+      }
+      
+      if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') {
+        const dir = e.key === 'ArrowLeft' ? -1 : 1;
+        const div = snapDiv || 1;
+        setNotes(prev => {
+          const updated = [...prev];
+          for (const id of Array.from(selection)) {
+            const n = updated.find(m => m.id === id);
+            if (n) n.t = Math.max(0, n.t + dir * div);
+          }
+          return updated;
+        });
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [selection, snapDiv, notes]);
 
   const handleQuantize = () => {
-    setNotes(prev => prev.map(n => {
-      if (selection.has(n.id)) {
-        return { ...n, t: snapTicks(n.t) };
+    setNotes(prev => {
+      const updated = [...prev];
+      for (const id of Array.from(selection)) {
+        const n = updated.find(m => m.id === id);
+        if (n) {
+          n.t = snapTicks(n.t);
+          const end = snapTicks(n.t + n.dur);
+          n.dur = Math.max(2, end - n.t);
+        }
       }
-      return n;
-    }));
+      return updated;
+    });
     onEventsChange(notesToEvents(notes));
   };
 
@@ -551,30 +625,29 @@ export default function PianoRoll({ events, onEventsChange, currentPosition = 0 
   };
 
   return (
-    <div className="flex flex-col h-full bg-hardware-bg">
-      <div className="flex items-center gap-3 px-3 py-2 bg-hardware-panel border-b border-hardware-accent/30 sticky top-0 z-10">
-        <div className="flex items-center gap-2">
-          <label className="text-xs text-hardware-text flex items-center gap-1">
+    <div className="flex flex-col h-full bg-[#1b1c1f]">
+      <div className="flex gap-3 items-center px-3 py-2 bg-[#2a2d31] border-b border-black/50 sticky top-0 z-10">
+        <div className="flex gap-2 items-center">
+          <label className="text-sm text-[#dfe3e8]">
             Tool
-            <select 
-              value={tool} 
-              onChange={(e) => setTool(e.target.value as Tool)}
-              className="bg-hardware-bg text-hardware-text border border-hardware-accent/30 rounded px-2 py-1 text-xs"
+            <select
               data-testid="select-tool"
+              value={tool}
+              onChange={(e) => setTool(e.target.value as Tool)}
+              className="ml-2 bg-[#3a3e44] text-[#dfe3e8] border border-black rounded-md px-2 py-1 text-sm"
             >
               <option value="select">Select (V)</option>
               <option value="draw">Draw (B)</option>
               <option value="erase">Erase (E)</option>
             </select>
           </label>
-          
-          <label className="text-xs text-hardware-text flex items-center gap-1">
+          <label className="text-sm text-[#dfe3e8]">
             Snap
-            <select 
-              value={snapDiv} 
-              onChange={(e) => setSnapDiv(Number(e.target.value))}
-              className="bg-hardware-bg text-hardware-text border border-hardware-accent/30 rounded px-2 py-1 text-xs"
+            <select
               data-testid="select-snap"
+              value={snapDiv}
+              onChange={(e) => setSnapDiv(Number(e.target.value))}
+              className="ml-2 bg-[#3a3e44] text-[#dfe3e8] border border-black rounded-md px-2 py-1 text-sm"
             >
               <option value="0">Off</option>
               <option value="48">1/2</option>
@@ -585,79 +658,67 @@ export default function PianoRoll({ events, onEventsChange, currentPosition = 0 
               <option value="6">1/16</option>
               <option value="4">1/24</option>
               <option value="3">1/32</option>
+              <option value="2">1/48</option>
             </select>
           </label>
-
-          <label className="text-xs text-hardware-text flex items-center gap-1">
+          <label className="text-sm text-[#dfe3e8]">
             Zoom X
-            <input 
-              type="number" 
-              min="4" 
-              max="64" 
+            <input
+              data-testid="input-zoomx"
+              type="number"
+              min="1"
+              max="64"
+              step="1"
               value={barsVisible}
-              onChange={(e) => setBarsVisible(Number(e.target.value))}
-              className="bg-hardware-bg text-hardware-text border border-hardware-accent/30 rounded px-2 py-1 text-xs w-16"
-              data-testid="input-zoom-x"
+              onChange={(e) => setBarsVisible(Number(e.target.value) || 16)}
+              className="ml-2 bg-[#3a3e44] text-[#dfe3e8] border border-black rounded-md px-2 py-1 w-16 text-sm"
             />
           </label>
-
-          <label className="text-xs text-hardware-text flex items-center gap-1">
+          <label className="text-sm text-[#dfe3e8]">
             Zoom Y
-            <input 
-              type="number" 
-              min="8" 
-              max="64" 
+            <input
+              data-testid="input-zoomy"
+              type="number"
+              min="8"
+              max="64"
+              step="1"
               value={keysVisible}
-              onChange={(e) => setKeysVisible(Number(e.target.value))}
-              className="bg-hardware-bg text-hardware-text border border-hardware-accent/30 rounded px-2 py-1 text-xs w-16"
-              data-testid="input-zoom-y"
+              onChange={(e) => setKeysVisible(Number(e.target.value) || 24)}
+              className="ml-2 bg-[#3a3e44] text-[#dfe3e8] border border-black rounded-md px-2 py-1 w-16 text-sm"
             />
           </label>
-
-          <button 
-            onClick={handleQuantize}
-            disabled={selection.size === 0}
-            className="bg-hardware-panel text-hardware-text border border-hardware-accent/30 rounded px-3 py-1 text-xs hover-elevate active-elevate-2 disabled:opacity-50"
+          <button
             data-testid="button-quantize"
+            onClick={handleQuantize}
+            className="bg-[#3a3e44] text-[#dfe3e8] border border-black rounded-md px-3 py-1 text-sm hover-elevate active-elevate-2"
           >
             Quantize (Q)
           </button>
-
-          <button 
-            onClick={handleDelete}
-            disabled={selection.size === 0}
-            className="bg-hardware-panel text-hardware-led-red border border-hardware-accent/30 rounded px-3 py-1 text-xs hover-elevate active-elevate-2 disabled:opacity-50"
+          <button
             data-testid="button-delete"
+            onClick={handleDelete}
+            className="bg-[#ff6b6b] text-white border border-black rounded-md px-3 py-1 text-sm hover-elevate active-elevate-2"
           >
             Delete
           </button>
         </div>
-
-        <div className="ml-auto text-xs text-muted-foreground">
-          Drag to move • Edge-drag to trim • Alt = no snap • Alt+Wheel = scroll time • Shift+Wheel = zoom X
+        <div className="ml-auto text-xs text-[#9aa1aa]">
+          Drag to move • Edge-drag to trim • Alt = no snap • Alt+Wheel = horizontal scroll • Shift+Wheel = zoom X
         </div>
       </div>
 
       <div ref={wrapRef} className="relative flex-1">
-        <canvas 
-          ref={gridRef} 
-          className="absolute left-0 top-0" 
-          data-testid="canvas-grid"
-        />
-        <canvas 
-          ref={pianoRef} 
-          className="absolute left-0 top-0" 
-          data-testid="canvas-piano"
-        />
-        <canvas 
-          ref={overlayRef} 
+        <canvas ref={gridRef} className="absolute left-0 top-0" data-testid="canvas-grid" />
+        <canvas ref={pianoRef} className="absolute left-0 top-0" data-testid="canvas-piano" />
+        <canvas
+          ref={overlayRef}
           className="absolute left-0 top-0 cursor-crosshair"
+          data-testid="canvas-overlay"
           onMouseMove={handleMouseMove}
           onMouseDown={handleMouseDown}
           onMouseUp={handleMouseUp}
           onMouseLeave={handleMouseUp}
           onWheel={handleWheel}
-          data-testid="canvas-overlay"
         />
       </div>
     </div>

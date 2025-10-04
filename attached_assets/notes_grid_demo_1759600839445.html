@@ -1,0 +1,525 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>MTM-R16 Notes Grid — Demo Canvas</title>
+<style>
+  :root{
+    --bg:#1b1c1f; --panel:#2a2d31; --grid:#3a3e44; --grid-sub:#2e3237;
+    --ruler:#9aa1aa; --note:#76d275; --note-sel:#ffcc66; --note-edge:#0e0f11;
+    --piano:#222429; --white:#e6e6e6; --black:#999;
+    --accent:#9bf26b; --text:#dfe3e8; --muted:#9aa1aa; --danger:#ff6b6b;
+  }
+  html, body { height: 100%; margin:0; background:var(--bg); color:var(--text); font: 14px/1.4 system-ui, -apple-system, Segoe UI, Roboto, Arial;}
+  .toolbar{ display:flex; gap:10px; align-items:center; padding:10px 12px; background:var(--panel); position:sticky; top:0; z-index:2; box-shadow:0 2px 0 #0008;}
+  .toolbar .group{ display:flex; gap:8px; align-items:center; }
+  select, button, input[type=number]{ background:#3a3e44; color:var(--text); border:1px solid #000; border-radius:8px; padding:6px 8px; }
+  button.primary{ background:var(--accent); color:#102010; font-weight:700;}
+  button:disabled{ opacity:.6;}
+  #wrap{ position:relative; height: calc(100% - 56px); }
+  canvas{ position:absolute; left:0; top:0; }
+  .hint{ padding:6px 12px; color:var(--muted); }
+  .legend{ margin-left:auto; color:var(--muted); }
+</style>
+</head>
+<body>
+  <div class="toolbar">
+    <div class="group">
+      <label>Tool
+        <select id="tool">
+          <option value="select">Select (V)</option>
+          <option value="draw">Draw (B)</option>
+          <option value="erase">Erase (E)</option>
+        </select>
+      </label>
+      <label>Snap
+        <select id="snap">
+          <option value="0">Off</option>
+          <option value="48">1/2</option>
+          <option value="24">1/4</option>
+          <option value="16">1/6</option>
+          <option value="12">1/8</option>
+          <option value="8">1/12</option>
+          <option value="6" selected>1/16</option>
+          <option value="4">1/24</option>
+          <option value="3">1/32</option>
+          <option value="2">1/48</option>
+        </select>
+      </label>
+      <label>Zoom X
+        <input id="zoomx" type="number" min="1" max="64" step="1" value="16" title="Bars visible horizontally">
+      </label>
+      <label>Zoom Y
+        <input id="zoomy" type="number" min="8" max="64" step="1" value="24" title="Pitches visible vertically">
+      </label>
+      <button id="quant" title="Quantise selection to Snap (Q)">Quantise (Q)</button>
+      <button id="del" title="Delete selection (Backspace)" class="danger">Delete</button>
+    </div>
+    <div class="legend">Drag to move • Edge-drag to trim • Alt = no snap • Alt+Wheel = horizontal scroll • Shift+Wheel = zoom X</div>
+  </div>
+
+  <div id="wrap">
+    <canvas id="grid"></canvas>
+    <canvas id="piano"></canvas>
+    <canvas id="overlay"></canvas>
+  </div>
+
+  <div class="hint">Demo only. Notes are in-memory. No audio. You can draw, select, move, trim, delete, quantise.</div>
+
+<script>
+(() => {
+  // Constants
+  const PPQ = 96;
+  const BEATS_PER_BAR = 4;
+  const TICKS_PER_BAR = PPQ * BEATS_PER_BAR;
+
+  // State
+  const state = {
+    barsVisible: 16,
+    keysVisible: 24,
+    snapDiv: 6, // 1/16 as ticks-per-subdivision => 96/16 = 6
+    scrollTicks: 0,
+    scrollKey: 48, // lowest MIDI note visible
+    tool: 'select',
+    hover: null,
+    dragging: null,
+    selection: new Set(),
+    notes: [], // {id, t, dur, nn, vel, ch}
+    nextId: 1,
+  };
+
+  // DOM
+  const grid = document.getElementById('grid');
+  const piano = document.getElementById('piano');
+  const overlay = document.getElementById('overlay');
+  const wrap = document.getElementById('wrap');
+
+  const toolSel = document.getElementById('tool');
+  const snapSel = document.getElementById('snap');
+  const zoomx = document.getElementById('zoomx');
+  const zoomy = document.getElementById('zoomy');
+  const quantBtn = document.getElementById('quant');
+  const delBtn = document.getElementById('del');
+
+  // Sizes
+  let dpr = window.devicePixelRatio || 1;
+  const pianoW = 72;
+
+  function resize() {
+    const {clientWidth:w, clientHeight:h} = wrap;
+    [grid, piano, overlay].forEach(c => {
+      c.width = Math.floor(w * dpr);
+      c.height = Math.floor(h * dpr);
+      c.style.width = w + 'px';
+      c.style.height = h + 'px';
+    });
+    draw();
+  }
+  window.addEventListener('resize', resize);
+
+  // Utils
+  const ctxG = grid.getContext('2d');
+  const ctxP = piano.getContext('2d');
+  const ctxO = overlay.getContext('2d');
+
+  function barsToPx() {
+    return (grid.width - pianoW*dpr) / state.barsVisible;
+  }
+  function ticksToX(t) {
+    const pxPerBar = barsToPx();
+    const rel = (t - state.scrollTicks) / TICKS_PER_BAR;
+    return Math.round(pianoW*dpr + rel * pxPerBar);
+  }
+  function xToTicks(x) {
+    const pxPerBar = barsToPx();
+    const rel = (x - pianoW*dpr) / pxPerBar;
+    return Math.round(state.scrollTicks + rel * TICKS_PER_BAR);
+  }
+  function keyHeight() {
+    return (grid.height) / state.keysVisible;
+  }
+  function nnToY(nn) {
+    const rel = (nn - state.scrollKey);
+    return Math.round(grid.height - (rel+1)*keyHeight());
+  }
+  function yToNN(y) {
+    const rel = Math.floor((grid.height - y) / keyHeight());
+    return state.scrollKey + rel;
+  }
+  function snapTicks(t) {
+    const div = Number(snapSel.value);
+    if (div === 0) return t;
+    const gridSz = div;
+    return Math.round(t / gridSz) * gridSz;
+  }
+  function isBlack(nn) {
+    return [1,3,6,8,10].includes(nn % 12);
+  }
+  function noteAt(x, y) {
+    const t = xToTicks(x);
+    const nn = yToNN(y);
+    const pad = Math.max(4, keyHeight()*0.15);
+    for (let i = state.notes.length - 1; i >= 0; i--) {
+      const n = state.notes[i];
+      if (Math.abs(n.nn - nn) <= 0.5) {
+        if (t >= n.t && t <= n.t + n.dur) {
+          const edgeX = ticksToX(n.t + n.dur);
+          if (Math.abs(edgeX - x) < pad) return {note:n, edge:true};
+          return {note:n, edge:false};
+        }
+      }
+    }
+    return null;
+  }
+
+  // Demo seed notes
+  function seed() {
+    const base = 60; // C4
+    for (let b=0; b<8; b++) {
+      addNote((b*TICKS_PER_BAR), PPQ/2, base + (b%3===0?0:7), 96, 1);
+    }
+  }
+
+  function addNote(t, dur, nn, vel, ch) {
+    const id = 'n' + (state.nextId++);
+    const note = {id, t:Math.max(0,t), dur:Math.max(2,dur), nn, vel, ch};
+    state.notes.push(note);
+    return note;
+  }
+
+  // Drawing
+  function drawGrid() {
+    ctxG.save();
+    ctxG.clearRect(0,0,grid.width,grid.height);
+
+    // background
+    ctxG.fillStyle = getComputedStyle(document.documentElement).getPropertyValue('--panel');
+    ctxG.fillRect(0,0,grid.width,grid.height);
+
+    // vertical bars & beats
+    const pxPerBar = barsToPx();
+    const startBar = Math.floor(state.scrollTicks / TICKS_PER_BAR);
+    const endBar = startBar + state.barsVisible + 1;
+
+    for (let bar = startBar; bar <= endBar; bar++) {
+      const x = Math.round(pianoW*dpr + (bar - startBar) * pxPerBar);
+      // bar line
+      ctxG.strokeStyle = getComputedStyle(document.documentElement).getPropertyValue('--grid');
+      ctxG.lineWidth = 1*dpr;
+      ctxG.beginPath();
+      ctxG.moveTo(x, 0);
+      ctxG.lineTo(x, grid.height);
+      ctxG.stroke();
+
+      // beats
+      for (let beat=1; beat<BEATS_PER_BAR; beat++) {
+        const xb = Math.round(x + beat * (pxPerBar/BEATS_PER_BAR));
+        ctxG.strokeStyle = getComputedStyle(document.documentElement).getPropertyValue('--grid-sub');
+        ctxG.beginPath();
+        ctxG.moveTo(xb, 0);
+        ctxG.lineTo(xb, grid.height);
+        ctxG.stroke();
+      }
+
+      // bar number
+      ctxG.fillStyle = getComputedStyle(document.documentElement).getPropertyValue('--ruler');
+      ctxG.font = `${12*dpr}px monospace`;
+      ctxG.textAlign = 'left';
+      ctxG.textBaseline = 'top';
+      ctxG.fillText(String(bar+1), x + 4*dpr, 4*dpr);
+    }
+
+    // horizontal key rows
+    const kh = keyHeight();
+    for (let i=0; i<state.keysVisible; i++) {
+      const nn = state.scrollKey + i;
+      const y = Math.round(grid.height - (i+1) * kh);
+      ctxG.fillStyle = isBlack(nn) ? '#272a2f' : '#2f3339';
+      ctxG.fillRect(pianoW*dpr, y, grid.width - pianoW*dpr, kh);
+    }
+
+    ctxG.restore();
+  }
+
+  function drawPiano() {
+    ctxP.save();
+    ctxP.clearRect(0,0,piano.width,piano.height);
+    const kh = keyHeight();
+    ctxP.fillStyle = getComputedStyle(document.documentElement).getPropertyValue('--piano');
+    ctxP.fillRect(0,0,pianoW*dpr,piano.height);
+
+    for (let i=0; i<state.keysVisible; i++) {
+      const nn = state.scrollKey + i;
+      const y = Math.round(piano.height - (i+1) * kh);
+      // key background
+      ctxP.fillStyle = isBlack(nn) ? '#13151a' : '#1e2126';
+      ctxP.fillRect(0, y, pianoW*dpr, kh);
+
+      // label C notes
+      if (nn % 12 === 0) {
+        ctxP.fillStyle = getComputedStyle(document.documentElement).getPropertyValue('--muted');
+        ctxP.font = `${11*dpr}px monospace`;
+        ctxP.textAlign = 'left'; ctxP.textBaseline='middle';
+        const octave = Math.floor(nn/12) - 1;
+        ctxP.fillText('C'+octave, 6*dpr, y + kh/2);
+      }
+
+      // key dividers
+      ctxP.strokeStyle = '#000';
+      ctxP.lineWidth = dpr;
+      ctxP.beginPath();
+      ctxP.moveTo(0, y);
+      ctxP.lineTo(pianoW*dpr, y);
+      ctxP.stroke();
+    }
+    ctxP.restore();
+  }
+
+  function drawNotes() {
+    ctxO.save();
+    ctxO.clearRect(0,0,overlay.width,overlay.height);
+
+    const kh = keyHeight();
+    const r = Math.max(4, Math.min(10, Math.floor(kh/3)));
+    const colNote = getComputedStyle(document.documentElement).getPropertyValue('--note');
+    const colSel = getComputedStyle(document.documentElement).getPropertyValue('--note-sel');
+    const colEdge = getComputedStyle(document.documentElement).getPropertyValue('--note-edge');
+
+    for (const n of state.notes) {
+      const x = ticksToX(n.t);
+      const w = Math.max(4, ticksToX(n.t + n.dur) - x);
+      const y = nnToY(n.nn);
+      const sel = state.selection.has(n.id);
+      ctxO.fillStyle = sel ? colSel : colNote;
+      roundRect(ctxO, x, y + 3, w, Math.max(6, kh - 6), r);
+      ctxO.fill();
+      // edge handle
+      ctxO.fillStyle = colEdge;
+      ctxO.fillRect(x + w - 3*dpr, y + 3, 3*dpr, Math.max(6, kh - 6));
+    }
+
+    // hover outline
+    if (state.hover && state.hover.note) {
+      const n = state.hover.note;
+      const x = ticksToX(n.t);
+      const w = Math.max(4, ticksToX(n.t + n.dur) - x);
+      const y = nnToY(n.nn);
+      ctxO.strokeStyle = '#ffffffaa';
+      ctxO.lineWidth = 2*dpr;
+      roundRect(ctxO, x-1, y + 2, w+2, Math.max(6, kh - 4), r);
+      ctxO.stroke();
+    }
+
+    ctxO.restore();
+  }
+
+  function roundRect(ctx, x, y, w, h, r){
+    ctx.beginPath();
+    ctx.moveTo(x+r, y);
+    ctx.arcTo(x+w, y, x+w, y+h, r);
+    ctx.arcTo(x+w, y+h, x, y+h, r);
+    ctx.arcTo(x, y+h, x, y, r);
+    ctx.arcTo(x, y, x+w, y, r);
+    ctx.closePath();
+  }
+
+  function draw() {
+    drawGrid();
+    drawPiano();
+    drawNotes();
+  }
+
+  // Interaction
+  let isMouseDown = false;
+
+  overlay.addEventListener('mousemove', (e)=>{
+    const rect = overlay.getBoundingClientRect();
+    const x = (e.clientX - rect.left) * dpr;
+    const y = (e.clientY - rect.top) * dpr;
+    state.hover = noteAt(x,y);
+    if (isMouseDown && state.dragging) {
+      const {mode, note, startX, startY, startT, startDur, startNN, startSelSnapshot} = state.dragging;
+      if (mode === 'move' || mode === 'draw-move') {
+        const dtTicks = Math.round((x - startX) / (barsToPx()/TICKS_PER_BAR));
+        const dnn = Math.round((startY - y) / keyHeight());
+        for (const id of state.selection) {
+          const n = state.notes.find(n=>n.id===id);
+          if (!n) continue;
+          let newT = startSelSnapshot[id].t + dtTicks;
+          if (!e.altKey) newT = snapTicks(newT);
+          n.t = Math.max(0, newT);
+          n.nn = startSelSnapshot[id].nn + dnn;
+        }
+      } else if (mode === 'resize') {
+        let t2 = xToTicks(x);
+        if (!e.altKey) t2 = snapTicks(t2);
+        note.dur = Math.max(2, t2 - startT);
+      } else if (mode === 'draw') {
+        let t2 = xToTicks(x);
+        if (!e.altKey) t2 = snapTicks(t2);
+        note.dur = Math.max(2, t2 - startT);
+      }
+      draw();
+    } else {
+      drawNotes();
+    }
+  });
+
+  overlay.addEventListener('mousedown', (e)=>{
+    overlay.setPointerCapture(e.pointerId || 1);
+    const rect = overlay.getBoundingClientRect();
+    const x = (e.clientX - rect.left) * dpr;
+    const y = (e.clientY - rect.top) * dpr;
+    isMouseDown = true;
+    const hit = noteAt(x,y);
+    const tool = state.tool;
+
+    if (tool === 'erase') {
+      if (hit && hit.note) {
+        state.notes = state.notes.filter(n=>n!==hit.note);
+        state.selection.delete(hit.note.id);
+        draw();
+      }
+      return;
+    }
+
+    if (tool === 'draw') {
+      let t0 = xToTicks(x);
+      if (!e.altKey) t0 = snapTicks(t0);
+      const nn = yToNN(y);
+      const n = addNote(t0, Math.max(12, PPQ/4), nn, 96, 1);
+      state.selection = new Set([n.id]);
+      state.dragging = {mode:'draw', note:n, startX:x, startY:y, startT:t0};
+      draw();
+      return;
+    }
+
+    if (hit && hit.note) {
+      const n = hit.note;
+      if (!e.shiftKey && !state.selection.has(n.id)) {
+        state.selection = new Set([n.id]);
+      } else if (e.shiftKey && state.selection.has(n.id)) {
+        state.selection.delete(n.id);
+      } else if (e.shiftKey) {
+        state.selection.add(n.id);
+      }
+      if (hit.edge) {
+        state.dragging = {mode:'resize', note:n, startX:x, startY:y, startT:n.t, startDur:n.dur};
+      } else {
+        const snap = {};
+        for (const id of state.selection) {
+          const note = state.notes.find(n=>n.id===id);
+          snap[id] = {t:note.t, nn:note.nn};
+        }
+        state.dragging = {mode:'move', note:n, startX:x, startY:y, startSelSnapshot:snap};
+      }
+    } else {
+      if (!e.shiftKey) state.selection.clear();
+    }
+    draw();
+  });
+
+  overlay.addEventListener('mouseup', (e)=>{
+    isMouseDown = false;
+    state.dragging = null;
+    overlay.releasePointerCapture(e.pointerId || 1);
+    draw();
+  });
+
+  // Wheel: vertical scroll; Alt = horizontal; Shift = zoom X
+  overlay.addEventListener('wheel', (e)=>{
+    if (e.shiftKey) {
+      state.barsVisible = Math.min(64, Math.max(1, state.barsVisible + Math.sign(e.deltaY)));
+      zoomx.value = state.barsVisible;
+      draw();
+      return;
+    }
+    if (e.altKey) {
+      state.scrollTicks = Math.max(0, state.scrollTicks + Math.sign(e.deltaY) * (TICKS_PER_BAR));
+      draw();
+      return;
+    }
+    state.scrollKey = Math.max(0, state.scrollKey + Math.sign(e.deltaY)*2);
+    draw();
+  }, {passive:true});
+
+  // Keyboard
+  window.addEventListener('keydown', (e)=>{
+    if (e.key==='v' || e.key==='V') toolSel.value = state.tool = 'select';
+    if (e.key==='b' || e.key==='B') toolSel.value = state.tool = 'draw';
+    if (e.key==='e' || e.key==='E') toolSel.value = state.tool = 'erase';
+    if (e.key==='Backspace' || e.key==='Delete') {
+      state.notes = state.notes.filter(n=>!state.selection.has(n.id));
+      state.selection.clear();
+      draw();
+    }
+    if (e.key==='q' || e.key==='Q') quantiseSelection();
+    if (e.key==='ArrowUp') { transpose( e.shiftKey ? 12 : 1 ); }
+    if (e.key==='ArrowDown') { transpose( e.shiftKey ? -12 : -1 ); }
+    if (e.key==='ArrowLeft' || e.key==='ArrowRight') {
+      const dir = e.key==='ArrowLeft' ? -1 : 1;
+      const div = Number(snapSel.value) || 1;
+      for (const id of state.selection) {
+        const n = state.notes.find(m=>m.id===id);
+        n.t = Math.max(0, n.t + dir*div);
+      }
+      draw();
+    }
+  });
+
+  function quantiseSelection(){
+    const div = Number(snapSel.value);
+    if (!div) return;
+    for (const id of state.selection) {
+      const n = state.notes.find(m=>m.id===id);
+      n.t = snapTicks(n.t);
+      const end = snapTicks(n.t + n.dur);
+      n.dur = Math.max(2, end - n.t);
+    }
+    draw();
+  }
+  function transpose(semi){
+    for (const id of state.selection) {
+      const n = state.notes.find(m=>m.id===id);
+      n.nn = Math.max(0, Math.min(127, n.nn + semi));
+    }
+    draw();
+  }
+
+  // UI bindings
+  toolSel.addEventListener('change', ()=> state.tool = toolSel.value);
+  snapSel.addEventListener('change', ()=> { state.snapDiv = Number(snapSel.value) || 0; });
+  zoomx.addEventListener('change', ()=> { state.barsVisible = Math.max(1, Math.min(64, Number(zoomx.value)||16)); draw(); });
+  zoomy.addEventListener('change', ()=> { state.keysVisible = Math.max(8, Math.min(64, Number(zoomy.value)||24)); draw(); });
+  quantBtn.addEventListener('click', quantiseSelection);
+  delBtn.addEventListener('click', ()=>{
+    state.notes = state.notes.filter(n=>!state.selection.has(n.id));
+    state.selection.clear(); draw();
+  });
+
+  // Init
+  seed();
+  // size & position canvases
+  function layoutCanvases(){
+    const {clientWidth:w, clientHeight:h} = wrap;
+    [grid, piano, overlay].forEach(c => {
+      c.width = Math.floor(w * dpr);
+      c.height = Math.floor(h * dpr);
+      c.style.width = w + 'px';
+      c.style.height = h + 'px';
+    });
+    piano.style.left = '0px';
+    piano.style.top = '0px';
+    grid.style.left = '0px';
+    grid.style.top = '0px';
+    overlay.style.left = '0px';
+    overlay.style.top = '0px';
+  }
+  layoutCanvases();
+  window.addEventListener('resize', layoutCanvases);
+  draw();
+})();
+</script>
+</body>
+</html>

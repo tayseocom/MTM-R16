@@ -91,6 +91,8 @@ Custom hardware-themed components:
 - `ControlGrid`: Function buttons (quantize, length, part, etc.)
 - `NumPad`: Numeric input buttons
 - `MIDIDeviceSelect`: MIDI device selection dropdowns
+- `PianoRoll`: Professional piano roll editor based on working canvas demo
+- `PianoRollDialog`: Modal wrapper for piano roll editor
 
 ### Threading Model
 
@@ -161,3 +163,54 @@ Required APIs:
 - **Web Audio API**: Audio context and AudioWorklet for timing
 - **localStorage**: Client-side persistence
 - **IndexedDB**: Potential future use for larger datasets
+
+## Piano Roll Editor
+
+### Implementation
+
+The piano roll editor is a fully functional note editor with canvas-based rendering, based on a working HTML demo. It features:
+
+**Three-Layer Canvas Architecture**:
+- **Grid Canvas**: Background grid, bar lines, beat divisions, and row coloring
+- **Piano Canvas**: Piano keyboard overlay with note labels
+- **Overlay Canvas**: Interactive note editing and visual feedback
+
+**Core Features**:
+- **Tools**: Select (V), Draw (B), Erase (E) with keyboard shortcuts
+- **Snap Grid**: Configurable snap from 1/2 to 1/48 notes
+- **Zoom Controls**: Horizontal (bars visible) and vertical (keys visible) zoom
+- **Note Editing**: Draw, select, move, resize notes with mouse
+- **Multi-selection**: Shift-click to add/remove notes from selection
+- **Edge Dragging**: Click and drag note edges to adjust duration
+- **Quantize**: Snap selected notes to grid (Q key)
+- **Delete**: Remove selected notes (Backspace/Delete)
+- **Keyboard Navigation**: Arrow keys to move/transpose, with Shift modifier
+- **Alt Key**: Hold Alt to disable snap during operations
+- **Mouse Wheel**: Vertical scroll, Alt+Wheel for horizontal, Shift+Wheel for zoom
+
+**Live MIDI Visualization**:
+- Incoming MIDI notes are visualized in real-time on the piano roll
+- Active notes shown with pulsing green indicators at playback position
+- Separate from recorded notes for clear visual distinction
+- Updates automatically as MIDI input is received
+
+**Note Pairing Algorithm**:
+- FIFO (first-in-first-out) queue-based pairing for accurate note durations
+- Handles sequential notes of same pitch correctly
+- Handles overlapping notes of same pitch correctly
+- Stable sort ensures note-offs processed before note-ons at same timestamp
+
+**Playback Integration**:
+- Visual playhead shows current playback position
+- 50ms polling interval for smooth position tracking
+- Notes sync with sequencer engine playback
+
+**Colors & Styling** (matching demo):
+- Background: `#2a2d31`
+- Grid lines: `#3a3e44` (bars), `#2e3237` (beats)
+- Notes (unselected): `#76d275` (green)
+- Notes (selected): `#ffcc66` (amber/yellow)
+- Live MIDI notes: Pulsing green with transparency
+- Note edge handle: `#0e0f11` (dark)
+- Hover outline: Semi-transparent white
+- Playhead: `#9bf26b` (bright green)

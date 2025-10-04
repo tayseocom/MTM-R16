@@ -9,6 +9,7 @@ interface PianoRollDialogProps {
   events: MIDIEvent[];
   onEventsChange: (events: MIDIEvent[]) => void;
   currentPosition?: number;
+  liveNotes?: Map<number, { velocity: number; timestamp: number }>;
 }
 
 export default function PianoRollDialog({
@@ -17,7 +18,8 @@ export default function PianoRollDialog({
   trackNumber,
   events,
   onEventsChange,
-  currentPosition
+  currentPosition,
+  liveNotes
 }: PianoRollDialogProps) {
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -32,6 +34,7 @@ export default function PianoRollDialog({
             events={events}
             onEventsChange={onEventsChange}
             currentPosition={currentPosition}
+            liveNotes={liveNotes}
           />
         </div>
       </DialogContent>
