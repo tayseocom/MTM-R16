@@ -13,6 +13,7 @@ export class SequencerEngine {
   private playbackEvents: Map<number, MIDIEvent[]> = new Map();
   private selectedOutput: MIDIOutput | null = null;
   private quantizeValue = 0; // 0 = off, 1/4, 1/8, 1/16, etc.
+  private midiThruEnabled = false;
 
   constructor() {
     this.project = this.createEmptyProject();
@@ -72,6 +73,10 @@ export class SequencerEngine {
     audioClock.setMetronome(enabled);
   }
 
+  setMidiThru(enabled: boolean) {
+    this.midiThruEnabled = enabled;
+  }
+
   setTempo(tempo: number) {
     this.project.tempo = tempo;
     audioClock.setTempo(tempo);
@@ -88,9 +93,7 @@ export class SequencerEngine {
     });
 
     midiManager.setInputListener((event) => {
-      if (this.isRecording) {
-        this.handleMIDIInput(event);
-      }
+      this.handleMIDIInput(event);
     });
 
     audioClock.setMetronome(true);
@@ -98,9 +101,15 @@ export class SequencerEngine {
   }
 
   private handleMIDIInput(event: MIDIMessageEvent) {
-    const [status, data1, data2] = event.data;
+    const data = Array.from(event.data || []);
+    const [status, data1, data2] = data;
     const command = status & 0xF0;
     const channel = status & 0x0F;
+    
+    // MIDI Thru: Forward incoming MIDI directly to output
+    if (this.midiThruEnabled && this.selectedOutput && data.length > 0) {
+      this.selectedOutput.send(new Uint8Array(data));
+    }
     
     const timestamp = audioClock.getCurrentTime() - this.recordStartTime;
     let midiEvent: MIDIEvent | null = null;
@@ -153,7 +162,8 @@ export class SequencerEngine {
         break;
     }
 
-    if (midiEvent) {
+    // Only record the event if we're actually recording
+    if (this.isRecording && midiEvent) {
       this.recordingEvents.forEach((events, trackId) => {
         const track = this.getCurrentPart().tracks.find(t => t.id === trackId);
         if (track && track.channel === channel) {

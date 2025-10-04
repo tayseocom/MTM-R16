@@ -75,6 +75,10 @@ export function FAQDialog() {
     {
       question: "What MIDI channels do the tracks use?",
       answer: "By default, Track 1 = MIDI Channel 1, Track 2 = MIDI Channel 2, etc. (1-16). Use the MIDI CHAN button to reassign channels."
+    },
+    {
+      question: "What does MIDI ECHO do?",
+      answer: "MIDI ECHO (also called MIDI Thru) routes incoming MIDI directly to the output. When enabled (green LED), you can hear what you're playing on your synthesizer in real-time, even when not recording. This is essential for monitoring while recording."
     }
   ];
 
