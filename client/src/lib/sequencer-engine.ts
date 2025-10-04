@@ -339,6 +339,10 @@ export class SequencerEngine {
     return this.project;
   }
 
+  getCurrentTick(): number {
+    return this.currentTick;
+  }
+
   loadProject(project: Project) {
     this.project = project;
     this.setTempo(project.tempo);

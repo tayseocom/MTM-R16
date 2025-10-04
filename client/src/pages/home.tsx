@@ -8,11 +8,12 @@ import NumPad from '@/components/NumPad';
 import PageButtons from '@/components/PageButtons';
 import MIDIDeviceSelect from '@/components/MIDIDeviceSelect';
 import { FAQDialog } from '@/components/FAQDialog';
+import PianoRollDialog from '@/components/PianoRollDialog';
 import { Download, Upload } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { midiManager } from '@/lib/midi';
 import { sequencerEngine } from '@/lib/sequencer-engine';
-import type { TransportState, EditMode, Project } from '@shared/schema';
+import type { TransportState, EditMode, Project, MIDIEvent } from '@shared/schema';
 
 export default function Home() {
   const [transportState, setTransportState] = useState<TransportState>('stopped');
@@ -31,6 +32,8 @@ export default function Home() {
   const [midiReady, setMidiReady] = useState(false);
   const [midiEchoEnabled, setMidiEchoEnabled] = useState(false);
   const [clockMode, setClockMode] = useState<'off' | 'send' | 'receive'>('off');
+  const [pianoRollOpen, setPianoRollOpen] = useState(false);
+  const [currentPosition, setCurrentPosition] = useState(0);
 
   useEffect(() => {
     sequencerEngine.initialize().then((ready) => {
@@ -52,6 +55,13 @@ export default function Home() {
         console.error('Failed to load saved project:', err);
       }
     }
+
+    // Poll for current position during playback
+    const positionInterval = setInterval(() => {
+      setCurrentPosition(sequencerEngine.getCurrentTick());
+    }, 50);
+
+    return () => clearInterval(positionInterval);
   }, []);
 
   const updateDevices = () => {
@@ -134,6 +144,11 @@ export default function Home() {
   };
 
   const handleModeClick = (mode: EditMode) => {
+    if (mode === 'edit') {
+      setPianoRollOpen(true);
+      return;
+    }
+    
     const newMode = editMode === mode ? 'none' : mode;
     setEditMode(newMode);
     
@@ -223,6 +238,26 @@ export default function Home() {
   const saveToLocalStorage = () => {
     const project = sequencerEngine.getProject();
     localStorage.setItem('mtm-project', JSON.stringify(project));
+  };
+
+  const handlePianoRollEventsChange = (events: MIDIEvent[]) => {
+    if (selectedTracks.length > 0) {
+      const part = sequencerEngine.getCurrentPart();
+      const track = part.tracks.find(t => t.id === selectedTracks[0]);
+      if (track) {
+        track.events = events;
+        saveToLocalStorage();
+      }
+    }
+  };
+
+  const getCurrentTrackEvents = (): MIDIEvent[] => {
+    if (selectedTracks.length > 0) {
+      const part = sequencerEngine.getCurrentPart();
+      const track = part.tracks.find(t => t.id === selectedTracks[0]);
+      return track?.events || [];
+    }
+    return [];
   };
 
   const handleSaveProject = () => {
@@ -436,6 +471,15 @@ export default function Home() {
           </div>
         </div>
       </div>
+
+      <PianoRollDialog
+        open={pianoRollOpen}
+        onOpenChange={setPianoRollOpen}
+        trackNumber={selectedTracks[0] || 1}
+        events={getCurrentTrackEvents()}
+        onEventsChange={handlePianoRollEventsChange}
+        currentPosition={currentPosition}
+      />
     </div>
   );
 }
