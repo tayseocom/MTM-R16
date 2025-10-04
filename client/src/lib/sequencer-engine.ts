@@ -476,10 +476,16 @@ export class SequencerEngine {
   }
 
   stop() {
+    const wasPlaying = this.isPlaying;
     this.isPlaying = false;
     this.isRecording = false;
     audioClock.stop();
-    midiManager.allNotesOff();
+    
+    // Only send All Notes Off when stopping playback (not recording)
+    // This prevents CC 123 messages from being recorded in external DAWs
+    if (wasPlaying) {
+      midiManager.allNotesOff();
+    }
     
     // Stop MIDI clock if sending
     if (this.clockMode === 'send') {
