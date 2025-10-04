@@ -38,6 +38,8 @@ export default function Home() {
   const [songModeOpen, setSongModeOpen] = useState(false);
   const [currentPosition, setCurrentPosition] = useState(0);
   const [liveNotes, setLiveNotes] = useState<Map<number, { velocity: number; timestamp: number }>>(new Map());
+  const [currentSong, setCurrentSong] = useState<string | null>(null);
+  const [project, setProject] = useState<Project>(sequencerEngine.getProject());
 
   useEffect(() => {
     sequencerEngine.initialize().then((ready) => {
@@ -76,10 +78,12 @@ export default function Home() {
     const savedProject = localStorage.getItem('mtm-project');
     if (savedProject) {
       try {
-        const project = JSON.parse(savedProject);
-        sequencerEngine.loadProject(project);
-        setTempo(project.tempo);
-        setCurrentPart(project.currentPart + 1);
+        const loadedProject = JSON.parse(savedProject);
+        sequencerEngine.loadProject(loadedProject);
+        setProject(loadedProject);
+        setTempo(loadedProject.tempo);
+        setCurrentPart(loadedProject.currentPart + 1);
+        setCurrentSong(loadedProject.currentSong || null);
       } catch (err) {
         console.error('Failed to load saved project:', err);
       }
@@ -133,17 +137,37 @@ export default function Home() {
       return;
     }
     if (transportState === 'playing') {
+      if (currentSong) {
+        songPlayer.stop();
+      }
       sequencerEngine.stop();
       setTransportState('stopped');
       setPlayingTracks([]);
     } else {
-      sequencerEngine.startPlayback(selectedTracks);
-      setTransportState('playing');
-      setPlayingTracks([...selectedTracks]);
+      if (currentSong) {
+        // Song mode: play the current song
+        songPlayer.play(currentSong);
+        setTransportState('playing');
+        // In song mode, all tracks from the active part are potentially playing
+        const project = sequencerEngine.getProject();
+        const currentPartIndex = project.currentPart;
+        if (currentPartIndex >= 0 && currentPartIndex < project.parts.length) {
+          const allTracks = Array.from({ length: 16 }, (_, i) => i + 1);
+          setPlayingTracks(allTracks);
+        }
+      } else {
+        // Part mode: play selected tracks
+        sequencerEngine.startPlayback(selectedTracks);
+        setTransportState('playing');
+        setPlayingTracks([...selectedTracks]);
+      }
     }
   };
 
   const handleStop = () => {
+    if (currentSong) {
+      songPlayer.stop();
+    }
     sequencerEngine.stop();
     setTransportState('stopped');
     setPlayingTracks([]);
@@ -324,10 +348,12 @@ export default function Home() {
         const reader = new FileReader();
         reader.onload = (e) => {
           try {
-            const project = JSON.parse(e.target?.result as string);
-            sequencerEngine.loadProject(project);
-            setTempo(project.tempo || 120);
-            setCurrentPart((project.currentPart || 0) + 1);
+            const loadedProject = JSON.parse(e.target?.result as string);
+            sequencerEngine.loadProject(loadedProject);
+            setProject(loadedProject);
+            setTempo(loadedProject.tempo || 120);
+            setCurrentPart((loadedProject.currentPart || 0) + 1);
+            setCurrentSong(loadedProject.currentSong || null);
             saveToLocalStorage();
           } catch (err) {
             console.error('Failed to load project:', err);
@@ -339,10 +365,12 @@ export default function Home() {
     input.click();
   };
 
-  const handleProjectChange = (project: Project) => {
-    sequencerEngine.loadProject(project);
-    setTempo(project.tempo);
-    setCurrentPart((project.currentPart || 0) + 1);
+  const handleProjectChange = (updatedProject: Project) => {
+    sequencerEngine.loadProject(updatedProject);
+    setProject(updatedProject);
+    setTempo(updatedProject.tempo);
+    setCurrentPart((updatedProject.currentPart || 0) + 1);
+    setCurrentSong(updatedProject.currentSong || null);
     saveToLocalStorage();
   };
 
@@ -534,7 +562,7 @@ export default function Home() {
       <SongModeDialog
         open={songModeOpen}
         onOpenChange={setSongModeOpen}
-        project={sequencerEngine.getProject()}
+        project={project}
         onProjectChange={handleProjectChange}
       />
     </div>

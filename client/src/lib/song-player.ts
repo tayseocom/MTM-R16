@@ -14,6 +14,25 @@ export class SongPlayer {
     this.notifyListeners();
   }
 
+  play(songId: string) {
+    const project = sequencerEngine.getProject();
+    const song = project.songs.find(s => s.id === songId);
+    if (!song) {
+      console.error(`Song with id ${songId} not found`);
+      return;
+    }
+    
+    this.loadSong(song);
+    
+    // Start playback with all tracks
+    const allTracks = Array.from({ length: 16 }, (_, i) => i + 1);
+    sequencerEngine.startPlayback(allTracks);
+  }
+
+  stop() {
+    this.reset();
+  }
+
   currentStep(): SongStep | null {
     if (!this.song || this.rt.idx >= this.song.steps.length) return null;
     return this.song.steps[this.rt.idx];
