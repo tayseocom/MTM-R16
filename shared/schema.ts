@@ -26,13 +26,32 @@ export interface Part {
   tracks: Track[];
 }
 
+// Bit 0..15 map to Track 1..16 (1 = audible, 0 = muted for that step)
+export type TrackMask = number; // 0..65535 for 16 tracks
+
+export interface SongStep {
+  id: string;                 // sst_<ulid>
+  partId: number;             // reference to Part.id
+  repeats?: number;           // default 1 (play this step N times before advancing)
+  trackMask?: TrackMask;      // overrides Part mutes for this step; undefined = use Part's mutes
+  transpose?: number;         // semitone offset just for this step (optional)
+}
+
 export interface Song {
-  id: number;
+  id: string;                 // sng_<ulid>
   name: string;
-  parts: number[];
-  loop: boolean;
-  loopStart: number;
-  loopEnd: number;
+  tempoBpm: number;           // song tempo; applied on select
+  steps: SongStep[];          // ordered chain
+  loopEnabled: boolean;       // if true, loop between loopStart..loopEnd (inclusive)
+  loopStart: number;          // step index (0-based)
+  loopEnd: number;            // step index (inclusive)
+  createdAt: number;
+  updatedAt: number;
+}
+
+export interface StepRuntime {
+  idx: number;                // current step index
+  pass: number;               // which repeat pass we're on for this step (1..repeats)
 }
 
 export interface Project {
@@ -41,7 +60,7 @@ export interface Project {
   parts: Part[];
   songs: Song[];
   currentPart: number;
-  currentSong: number | null;
+  currentSong: string | null;  // Song.id
 }
 
 export const projectSchema = z.object({

@@ -1,10 +1,11 @@
-import type { MIDIEvent, Track, Part, Project } from '@shared/schema';
+import type { MIDIEvent, Track, Part, Project, TrackMask } from '@shared/schema';
 import { audioClock } from './audio-clock';
 import { midiManager } from './midi';
 import { metronome } from './metronome';
 
 type RecordBufferUpdateListener = (trackId: number, data: { added: MIDIEvent[], changedRange: { t0: number, t1: number } }) => void;
 type TakeCommittedListener = (trackId: number, data: { ranges: Array<{ t0: number, t1: number }> }) => void;
+type PartBoundaryListener = () => void;
 
 export class SequencerEngine {
   private project: Project;
@@ -21,10 +22,16 @@ export class SequencerEngine {
   
   private recordBufferUpdateListeners: RecordBufferUpdateListener[] = [];
   private takeCommittedListeners: TakeCommittedListener[] = [];
+  private partBoundaryListeners: PartBoundaryListener[] = [];
   private lastEmitTime = 0;
   private emitThrottleMs = 50; // 50ms = ~20 updates per second
   private pendingEventsByTrack: Map<number, MIDIEvent[]> = new Map();
   private activeNotesByTrack: Map<number, Map<number, MIDIEvent[]>> = new Map(); // trackId -> (noteNumber -> FIFO queue of noteOnEvents)
+
+  // Song mode step-scoped overrides
+  private queuedPartId: number | null = null;
+  private stepTrackMask: TrackMask | null = null;
+  private stepTranspose: number = 0;
 
   constructor() {
     this.project = this.createEmptyProject();
@@ -374,9 +381,18 @@ export class SequencerEngine {
 
     this.playbackEvents.clear();
 
-    const tracksToPlay = trackIds 
+    let tracksToPlay = trackIds 
       ? part.tracks.filter(t => trackIds.includes(t.id) && !t.muted)
       : part.tracks.filter(t => !t.muted);
+
+    // Apply step track mask if set (overrides Part mutes)
+    if (this.stepTrackMask !== null) {
+      tracksToPlay = part.tracks.filter(track => {
+        const trackBit = track.id - 1; // Track 1 = bit 0, Track 2 = bit 1, etc.
+        const isAudible = (this.stepTrackMask! & (1 << trackBit)) !== 0;
+        return isAudible;
+      });
+    }
 
     tracksToPlay.forEach(track => {
       track.events.forEach(event => {
@@ -399,11 +415,37 @@ export class SequencerEngine {
     
     // Wrap tick to loop within part length
     const loopTick = tick % totalTicks;
+    
+    // Detect part boundary (wrap from end back to 0)
+    if (loopTick === 0 && tick > 0) {
+      // Notify part boundary listeners (e.g., song player)
+      this.partBoundaryListeners.forEach(listener => listener());
+      
+      // Apply queued part switch if any
+      if (this.queuedPartId !== null) {
+        const partIndex = this.project.parts.findIndex(p => p.id === this.queuedPartId);
+        if (partIndex !== -1) {
+          this.project.currentPart = partIndex;
+          this.schedulePlaybackEvents(); // Re-schedule events for new part
+        }
+        this.queuedPartId = null;
+      }
+    }
+    
     const events = this.playbackEvents.get(loopTick);
     
     if (events && this.selectedOutput) {
       events.forEach(event => {
-        this.sendMIDIEvent(event, timestamp);
+        // Apply step transpose if set
+        let modifiedEvent = event;
+        if (this.stepTranspose !== 0 && (event.type === 'noteOn' || event.type === 'noteOff') && event.note !== undefined) {
+          const newNote = event.note + this.stepTranspose;
+          if (newNote >= 0 && newNote <= 127) {
+            modifiedEvent = { ...event, note: newNote };
+          }
+        }
+        
+        this.sendMIDIEvent(modifiedEvent, timestamp);
       });
     }
   }
@@ -559,6 +601,39 @@ export class SequencerEngine {
         return event;
       });
     }
+  }
+
+  // Song mode step-scoped override methods
+
+  /**
+   * Queue a part to switch to at the next part boundary
+   */
+  queueNextPart(partId: number | null) {
+    this.queuedPartId = partId;
+  }
+
+  /**
+   * Set step-level track mask (overrides Part mutes for current step)
+   */
+  setStepTrackMask(mask: TrackMask | null) {
+    this.stepTrackMask = mask;
+  }
+
+  /**
+   * Set step-level transpose (semitone offset for current step)
+   */
+  setStepTranspose(semitones: number) {
+    this.stepTranspose = semitones;
+  }
+
+  /**
+   * Register a listener for part boundary events
+   */
+  onPartBoundary(listener: PartBoundaryListener) {
+    this.partBoundaryListeners.push(listener);
+    return () => {
+      this.partBoundaryListeners = this.partBoundaryListeners.filter(l => l !== listener);
+    };
   }
 }
 

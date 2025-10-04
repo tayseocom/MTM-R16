@@ -1,0 +1,44 @@
+3) UI: Song editor & performer
+3.1 Step list editor (left pane)
+Table with rows = steps. Columns: #, Part, Repeats, Mask, Transpose.
+Reorder via drag handle; duplicate/delete via row actions.
+Key shortcuts:
+Enter to audition the selected step (loads Part solo in Part mode without leaving the editor).
+Cmd/Ctrl+D duplicate row(s).
+Alt+↑/↓ move row(s).
+Mask editor opens a small popover: 8 mini-LEDs for tracks; click to toggle → writes trackMask.
+Repeats increments with + / − keys; shows ×3 etc.
+3.2 Chain overview (right pane)
+Horizontal mini timeline: each step drawn as a pill; wider if repeats > 1 (with “×N” badge).
+Click to select step; drag loop braces to set loopStart/loopEnd.
+Toggle Loop switch; when on, pills between braces gain a subtle highlight.
+3.3 Playback header
+Buttons: Play, Stop/Continue, Rec (disabled in Song mode), Loop.
+Speed readouts: Song 01 • Step 04/11 (pass 2/3) • Part 12 • 120 BPM.
+Temporary live mutes remain temporary in Song mode (don’t alter step masks).
+3.4 In-place Part audition
+A small “eye” icon beside the Part name lets you jump into Part mode to tweak the Part, then return to Song editor at the same row (breadcrumb).
+4) Transport hooks
+When Play pressed in Song mode:
+If stopped: set rt.idx to the selected step (or 0), pass = 1, call applyStepState, then start.
+If playing: Play restarts from step 0, pass = 1.
+On Stop: store continue position as { stepIdx, pass, partTick }.
+On Continue: resume from that triple; if partTick is 0 and you’d changed tempo, glide again.
+5) Mask precedence & live mutes
+Order of precedence during playback:
+Live mutes (temporary, reset on step change)
+Step trackMask (if set)
+Part stored mutes (fallback)
+Implementation hint: compute an effectiveMask = (partMask & stepMask) & liveMask (treat unset step mask as all-ones).
+6) Loop behaviour
+If loopEnabled == false: play to last step then Stop.
+If true:
+When the engine would advance from loopEnd + 1, jump to loopStart.
+If editor moves braces while playing:
+Changes take effect on the next step boundary.
+If the current step is now outside the loop window, finish its repeats then jump to loopStart.
+7) Editing while playing
+You can safely edit future steps at any time.
+Editing the current step’s partId or trackMask:
+Changes apply on the next cycle of this step (i.e. after repeat count finishes), to avoid mid-bar surprises.
+The UI shows a small clock icon on fields that are “queued”.
