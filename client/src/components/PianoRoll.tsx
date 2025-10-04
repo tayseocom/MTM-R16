@@ -64,7 +64,14 @@ export default function PianoRoll({ events, onEventsChange, currentPosition = 0 
     const noteStacks = new Map<number, MIDIEvent[]>();
     const result: PianoNote[] = [];
     
-    const sortedEvents = [...evs].sort((a, b) => a.timestamp - b.timestamp);
+    const sortedEvents = [...evs].sort((a, b) => {
+      if (a.timestamp !== b.timestamp) return a.timestamp - b.timestamp;
+      const aIsNoteOff = a.type === 'noteOff' || (a.type === 'noteOn' && a.velocity === 0);
+      const bIsNoteOff = b.type === 'noteOff' || (b.type === 'noteOn' && b.velocity === 0);
+      if (aIsNoteOff && !bIsNoteOff) return -1;
+      if (!aIsNoteOff && bIsNoteOff) return 1;
+      return 0;
+    });
     
     sortedEvents.forEach(e => {
       if (e.type === 'noteOn' && e.note !== undefined && e.velocity && e.velocity > 0) {
@@ -75,7 +82,7 @@ export default function PianoRoll({ events, onEventsChange, currentPosition = 0 
       } else if ((e.type === 'noteOff' || (e.type === 'noteOn' && e.velocity === 0)) && e.note !== undefined) {
         const stack = noteStacks.get(e.note);
         if (stack && stack.length > 0) {
-          const noteOn = stack.pop()!;
+          const noteOn = stack.shift()!;
           const t = Math.round(noteOn.timestamp);
           const dur = Math.round(e.timestamp - noteOn.timestamp);
           result.push({
