@@ -174,9 +174,12 @@ export class SequencerEngine {
     const command = status & 0xF0;
     const channel = status & 0x0F;
     
-    // MIDI Thru: Forward incoming MIDI directly to output
-    if (this.midiThruEnabled && this.selectedOutput && data.length > 0) {
+    // MIDI Thru: Forward incoming MIDI directly to output (only when recording or playing)
+    if (this.midiThruEnabled && this.selectedOutput && data.length > 0 && (this.isRecording || this.isPlaying)) {
+      console.log('[MIDI THRU] Forwarding:', data, 'isRecording:', this.isRecording, 'isPlaying:', this.isPlaying);
       this.selectedOutput.send(new Uint8Array(data));
+    } else if (this.midiThruEnabled && this.selectedOutput && data.length > 0) {
+      console.log('[MIDI THRU] BLOCKED (stopped):', data);
     }
     
     const timestamp = audioClock.getCurrentTime() - this.recordStartTime;
@@ -471,19 +474,23 @@ export class SequencerEngine {
     }
 
     if (data.length > 0) {
+      console.log('[MIDI OUT]', event.type, 'ch:', event.channel, 'note:', event.note, 'vel:', event.velocity, 'isPlaying:', this.isPlaying);
       midiManager.sendMessage(this.selectedOutput, new Uint8Array(data), timestamp);
     }
   }
 
   stop() {
+    console.log('[STOP] Called - isPlaying:', this.isPlaying, 'isRecording:', this.isRecording);
     const wasPlaying = this.isPlaying;
     this.isPlaying = false;
     this.isRecording = false;
     audioClock.stop();
+    console.log('[STOP] Flags cleared, audio clock stopped');
     
     // Only send All Notes Off when stopping playback (not recording)
     // This prevents CC 123 messages from being recorded in external DAWs
     if (wasPlaying) {
+      console.log('[STOP] Sending All Notes Off');
       midiManager.allNotesOff();
     }
     
@@ -491,6 +498,7 @@ export class SequencerEngine {
     if (this.clockMode === 'send') {
       midiManager.stopClockSend();
     }
+    console.log('[STOP] Complete');
   }
 
   setOutput(output: MIDIOutput | null) {
