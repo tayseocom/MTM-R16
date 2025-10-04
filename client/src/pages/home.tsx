@@ -220,9 +220,12 @@ export default function Home() {
       const newLength = prompt(`Enter part length (1-64 bars):`, part.length.toString());
       if (newLength) {
         const lengthBars = parseInt(newLength);
-        if (lengthBars >= 1 && lengthBars <= 64) {
+        if (!isNaN(lengthBars) && lengthBars >= 1 && lengthBars <= 64) {
           sequencerEngine.setPartLength(part.id, lengthBars);
+          setProject(structuredClone(sequencerEngine.getProject()));
           saveToLocalStorage();
+        } else {
+          alert('Invalid length. Please enter a number between 1 and 64.');
         }
       }
       return;
