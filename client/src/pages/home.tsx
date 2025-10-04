@@ -4,6 +4,7 @@ import TransportControls from '@/components/TransportControls';
 import TrackButton from '@/components/TrackButton';
 import ControlGrid from '@/components/ControlGrid';
 import RightPanel from '@/components/RightPanel';
+import NumPad from '@/components/NumPad';
 import MIDIDeviceSelect from '@/components/MIDIDeviceSelect';
 import { FAQDialog } from '@/components/FAQDialog';
 import PianoRollDialog from '@/components/PianoRollDialog';
@@ -13,7 +14,7 @@ import { Button } from '@/components/ui/button';
 import { midiManager } from '@/lib/midi';
 import { sequencerEngine } from '@/lib/sequencer-engine';
 import { songPlayer } from '@/lib/song-player';
-import type { TransportState, EditMode, Project, MIDIEvent } from '@shared/schema';
+import type { TransportState, EditMode, Project, MIDIEvent, Track } from '@shared/schema';
 
 export default function Home() {
   const [transportState, setTransportState] = useState<TransportState>('stopped');
@@ -229,64 +230,6 @@ export default function Home() {
       return;
     }
 
-    if (mode === 'quantize') {
-      const options = ['OFF', '1/4', '1/8', '1/16', '1/32'];
-      const choice = prompt('Select quantize:\n0=OFF, 1=1/4, 2=1/8, 3=1/16, 4=1/32', '0');
-      if (choice !== null) {
-        const num = parseInt(choice);
-        const quantizeMap: Record<number, number> = { 0: 0, 1: 1/4, 2: 1/8, 3: 1/16, 4: 1/32 };
-        if (num >= 0 && num <= 4) {
-          sequencerEngine.setQuantize(quantizeMap[num]);
-        }
-      }
-      return;
-    }
-
-    if (mode === 'part') {
-      const partNum = prompt('Select part (1-9):', currentPart.toString());
-      if (partNum) {
-        const num = parseInt(partNum);
-        if (!isNaN(num) && num >= 1 && num <= 9) {
-          setCurrentPart(num);
-          sequencerEngine.getProject().currentPart = num - 1;
-          saveToLocalStorage();
-        } else {
-          alert('Invalid part number. Please enter 1-9.');
-        }
-      }
-      return;
-    }
-
-    if (mode === 'transpose') {
-      const semitones = prompt('Transpose semitones (-12 to +12):', '0');
-      if (semitones !== null) {
-        const num = parseInt(semitones);
-        if (!isNaN(num) && num >= -12 && num <= 12) {
-          selectedTracks.forEach(trackId => {
-            sequencerEngine.transposeTrack(trackId, num);
-          });
-          saveToLocalStorage();
-        } else {
-          alert('Invalid transpose. Please enter -12 to +12.');
-        }
-      }
-      return;
-    }
-
-    if (mode === 'copy') {
-      const destPart = prompt(`Copy Part ${currentPart} to part (1-9):`, '');
-      if (destPart) {
-        const num = parseInt(destPart);
-        if (!isNaN(num) && num >= 1 && num <= 9) {
-          sequencerEngine.copyPart(currentPart, num);
-          saveToLocalStorage();
-        } else {
-          alert('Invalid destination. Please enter 1-9.');
-        }
-      }
-      return;
-    }
-    
     const newMode = editMode === mode ? 'none' : mode;
     setEditMode(newMode);
     
@@ -304,6 +247,58 @@ export default function Home() {
     }
   };
 
+  const handleNumPadClick = (num: number) => {
+    switch (editMode) {
+      case 'quantize':
+        const quantizeMap: Record<number, number> = { 0: 0, 1: 1/4, 2: 1/8, 3: 1/16, 4: 1/32 };
+        sequencerEngine.setQuantize(quantizeMap[num] || 0);
+        setEditMode('none');
+        break;
+      case 'part':
+        if (num >= 1 && num <= 9) {
+          const project = sequencerEngine.getProject();
+          // Ensure the part exists, create if needed
+          if (!project.parts[num - 1]) {
+            const tracks: Track[] = Array.from({ length: 16 }, (_, i) => ({
+              id: i + 1,
+              name: `Track ${i + 1}`,
+              channel: i,
+              muted: false,
+              events: []
+            }));
+            project.parts[num - 1] = {
+              id: num,
+              name: `Part ${num}`,
+              length: 4,
+              tracks
+            };
+          }
+          setCurrentPart(num);
+          project.currentPart = num - 1;
+          setProject(structuredClone(project));
+          saveToLocalStorage();
+          setEditMode('none');
+        }
+        break;
+      case 'transpose':
+        const semitones = num - 5;
+        selectedTracks.forEach(trackId => {
+          sequencerEngine.transposeTrack(trackId, semitones);
+        });
+        saveToLocalStorage();
+        setEditMode('none');
+        break;
+      case 'copy':
+        if (num > 0 && num <= 9) {
+          sequencerEngine.copyPart(currentPart, num);
+          saveToLocalStorage();
+          setEditMode('none');
+        }
+        break;
+      default:
+        console.log('Number clicked:', num);
+    }
+  };
 
   const handleTrackClickInEditMode = (trackNum: number) => {
     if (editMode === 'merge' && selectedTracks.length > 0) {
@@ -316,13 +311,19 @@ export default function Home() {
   };
 
   const getLCDText = () => {
-    if (!midiReady) return 'NO MIDI - DEMO MODE';
+    // Check editMode first (before MIDI status) so modes work even in demo mode
+    if (editMode === 'quantize') return 'QUANTIZE: 0=OFF 1-4=VAL';
+    if (editMode === 'part') return 'PART: SELECT 1-9';
+    if (editMode === 'copy') return 'COPY: SELECT DEST 1-9';
+    if (editMode === 'transpose') return 'TRANSPOSE: 5=0 1-9';
     if (editMode === 'merge') return 'MERGE: SELECT TRACKS';
     if (editMode === 'erase') return 'ERASE: CONFIRM?';
     if (editMode === 'song') return 'SONG MODE: BUILD CHAIN';
     if (editMode === 'load') return 'LOAD: SELECT FILE';
     if (editMode === 'save') return 'SAVE: ENTER NAME';
     if (editMode === 'midi_chan') return 'MIDI CHAN: SELECT TRACK';
+    
+    if (!midiReady) return 'NO MIDI - DEMO MODE';
     
     const part = sequencerEngine.getCurrentPart();
     const partInfo = `PART ${currentPart.toString().padStart(2, '0')} (${part.length} BARS)`;
@@ -336,7 +337,7 @@ export default function Home() {
   };
 
   const getLCDSubText = () => {
-    if (!midiReady) return 'OPEN IN CHROME/EDGE FOR MIDI';
+    // Check transport/edit states first (before MIDI status)
     if (transportState === 'recording') {
       const trackList = armedTracks.length > 0 ? armedTracks.join(',') : selectedTracks.join(',');
       return `RECORDING TRK ${trackList}`;
@@ -353,7 +354,13 @@ export default function Home() {
     }
     
     if (transportState === 'playing') return 'PLAYING';
+    
+    if (editMode === 'quantize' || editMode === 'part' || editMode === 'transpose' || editMode === 'copy') {
+      return 'USE NUMPAD OR PROMPT';
+    }
     if (editMode !== 'none') return 'PRESS BUTTON OR TRACK';
+    
+    if (!midiReady) return 'OPEN IN CHROME/EDGE FOR MIDI';
     
     const part = sequencerEngine.getCurrentPart();
     const recordedTracks = part.tracks.filter(t => t.events.length > 0).length;
@@ -469,10 +476,14 @@ export default function Home() {
         {/* Main Panel */}
         <div className="bg-card border-2 border-border rounded-lg p-6 space-y-6">
           {/* LCD Display and Controls Row */}
-          <div className="grid grid-cols-1 lg:grid-cols-[1fr_auto] gap-4 items-start">
+          <div className="grid grid-cols-1 lg:grid-cols-[1fr_auto_auto] gap-4 items-start">
             <LCDDisplay 
               mainText={getLCDText()}
               subText={getLCDSubText()}
+            />
+            <NumPad 
+              onNumberClick={handleNumPadClick}
+              onMinusClick={() => handleNumPadClick(0)}
             />
             <RightPanel 
               loopEnabled={loopEnabled}
