@@ -31,6 +31,7 @@ export default function PianoRollDialog({
         </DialogHeader>
         <div className="flex-1 overflow-hidden">
           <PianoRoll 
+            trackId={trackNumber}
             events={events}
             onEventsChange={onEventsChange}
             currentPosition={currentPosition}

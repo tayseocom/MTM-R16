@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import type { MIDIEvent } from '@shared/schema';
+import { sequencerEngine } from '@/lib/sequencer-engine';
 
 const PPQ = 96;
 const BEATS_PER_BAR = 4;
@@ -16,6 +17,7 @@ interface PianoNote {
 }
 
 interface PianoRollProps {
+  trackId: number;
   events: MIDIEvent[];
   onEventsChange: (events: MIDIEvent[]) => void;
   currentPosition?: number;
@@ -34,7 +36,7 @@ interface DragState {
   startSelSnapshot?: Record<string, { t: number; nn: number }>;
 }
 
-export default function PianoRoll({ events, onEventsChange, currentPosition = 0, liveNotes }: PianoRollProps) {
+export default function PianoRoll({ trackId, events, onEventsChange, currentPosition = 0, liveNotes }: PianoRollProps) {
   const gridRef = useRef<HTMLCanvasElement>(null);
   const pianoRef = useRef<HTMLCanvasElement>(null);
   const overlayRef = useRef<HTMLCanvasElement>(null);
@@ -108,6 +110,48 @@ export default function PianoRoll({ events, onEventsChange, currentPosition = 0,
 
     setNotes(result.sort((a, b) => a.t - b.t));
   }, [events]);
+
+  // Subscribe to live recording updates
+  useEffect(() => {
+    const unsubscribeBuffer = sequencerEngine.onRecordBufferUpdate((updateTrackId, data) => {
+      // Only update if this is for our track
+      if (updateTrackId !== trackId) return;
+      
+      // Check if changed range intersects visible window
+      const visibleT0 = scrollTicks;
+      const visibleT1 = scrollTicks + barsVisible * TICKS_PER_BAR;
+      
+      if (data.changedRange.t1 < visibleT0 || data.changedRange.t0 > visibleT1) {
+        return; // Out of visible range, skip update
+      }
+      
+      // For now, trigger a full refresh by reading current events from engine
+      // This ensures we see the latest recording buffer
+      const currentPart = sequencerEngine.getCurrentPart();
+      const track = currentPart.tracks.find(t => t.id === trackId);
+      if (track) {
+        // Trigger events prop update to refresh notes
+        onEventsChange(track.events);
+      }
+    });
+
+    const unsubscribeCommit = sequencerEngine.onTakeCommitted((updateTrackId, data) => {
+      // Only update if this is for our track
+      if (updateTrackId !== trackId) return;
+      
+      // Committed - refresh the display
+      const currentPart = sequencerEngine.getCurrentPart();
+      const track = currentPart.tracks.find(t => t.id === trackId);
+      if (track) {
+        onEventsChange(track.events);
+      }
+    });
+
+    return () => {
+      unsubscribeBuffer();
+      unsubscribeCommit();
+    };
+  }, [trackId, scrollTicks, barsVisible, onEventsChange]);
 
   // Convert notes to MIDI events
   const notesToEvents = (nts: PianoNote[]): MIDIEvent[] => {
