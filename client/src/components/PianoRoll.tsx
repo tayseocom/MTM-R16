@@ -125,13 +125,13 @@ export default function PianoRoll({ trackId, events, onEventsChange, currentPosi
         return; // Out of visible range, skip update
       }
       
-      // For now, trigger a full refresh by reading current events from engine
-      // This ensures we see the latest recording buffer
+      // Combine committed events with recording buffer
       const currentPart = sequencerEngine.getCurrentPart();
       const track = currentPart.tracks.find(t => t.id === trackId);
       if (track) {
-        // Trigger events prop update to refresh notes
-        onEventsChange(track.events);
+        const recordingBuffer = sequencerEngine.getRecordingBuffer(trackId);
+        const combinedEvents = [...track.events, ...recordingBuffer].sort((a, b) => a.timestamp - b.timestamp);
+        onEventsChange(combinedEvents);
       }
     });
 
@@ -139,7 +139,7 @@ export default function PianoRoll({ trackId, events, onEventsChange, currentPosi
       // Only update if this is for our track
       if (updateTrackId !== trackId) return;
       
-      // Committed - refresh the display
+      // After commit, recording buffer is cleared and events are in track.events
       const currentPart = sequencerEngine.getCurrentPart();
       const track = currentPart.tracks.find(t => t.id === trackId);
       if (track) {

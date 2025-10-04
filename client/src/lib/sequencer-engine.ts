@@ -23,6 +23,8 @@ export class SequencerEngine {
   private takeCommittedListeners: TakeCommittedListener[] = [];
   private lastEmitTime = 0;
   private emitThrottleMs = 50; // 50ms = ~20 updates per second
+  private pendingEventsByTrack: Map<number, MIDIEvent[]> = new Map();
+  private activeNotesByTrack: Map<number, Map<number, MIDIEvent[]>> = new Map(); // trackId -> (noteNumber -> FIFO queue of noteOnEvents)
 
   constructor() {
     this.project = this.createEmptyProject();
@@ -91,6 +93,14 @@ export class SequencerEngine {
     };
   }
 
+  getRecordingBuffer(trackId: number): MIDIEvent[] {
+    return this.recordingEvents.get(trackId) || [];
+  }
+
+  isCurrentlyRecording(): boolean {
+    return this.isRecording;
+  }
+
   setMetronome(enabled: boolean) {
     metronome.setEnabled(enabled);
     audioClock.setMetronome(enabled);
@@ -136,7 +146,12 @@ export class SequencerEngine {
     
     trackIds.forEach(id => {
       this.recordingEvents.set(id, []);
+      this.activeNotesByTrack.set(id, new Map());
     });
+    
+    // Clear pending events from previous recording session
+    this.pendingEventsByTrack.clear();
+    this.lastEmitTime = 0;
 
     midiManager.setInputListener((event) => {
       this.handleMIDIInput(event);
@@ -216,24 +231,91 @@ export class SequencerEngine {
       this.recordingEvents.forEach((events, trackId) => {
         const track = this.getCurrentPart().tracks.find(t => t.id === trackId);
         if (track && track.channel === channel) {
-          const eventsBefore = events.length;
           events.push(midiEvent!);
           
-          // Emit throttled update if enough time has passed
-          if (shouldEmit && this.recordBufferUpdateListeners.length > 0) {
-            const t0 = midiEvent!.timestamp;
-            const t1 = midiEvent!.timestamp + (midiEvent!.type === 'noteOn' ? 1 : 0);
+          // Track active notes using FIFO queue for overlapping notes
+          const activeNotes = this.activeNotesByTrack.get(trackId);
+          if (activeNotes) {
+            if (midiEvent!.type === 'noteOn' && midiEvent!.velocity && midiEvent!.velocity > 0 && midiEvent!.note !== undefined) {
+              // Push note-on to FIFO queue
+              if (!activeNotes.has(midiEvent!.note)) {
+                activeNotes.set(midiEvent!.note, []);
+              }
+              activeNotes.get(midiEvent!.note)!.push(midiEvent!);
+            } else if ((midiEvent!.type === 'noteOff' || (midiEvent!.type === 'noteOn' && midiEvent!.velocity === 0)) && midiEvent!.note !== undefined) {
+              // Note-off: pop from FIFO queue (shift = remove first)
+              const queue = activeNotes.get(midiEvent!.note);
+              if (queue && queue.length > 0) {
+                queue.shift();
+                if (queue.length === 0) {
+                  activeNotes.delete(midiEvent!.note);
+                }
+              }
+            }
+          }
+          
+          // Track pending events for this track
+          if (!this.pendingEventsByTrack.has(trackId)) {
+            this.pendingEventsByTrack.set(trackId, []);
+          }
+          this.pendingEventsByTrack.get(trackId)!.push(midiEvent!);
+        }
+      });
+      
+      // Emit throttled update if enough time has passed
+      if (shouldEmit && this.recordBufferUpdateListeners.length > 0) {
+        this.pendingEventsByTrack.forEach((pendingEvents, trackId) => {
+          if (pendingEvents.length > 0) {
+            // Calculate range covering ALL pending events AND their corresponding note-ons
+            const timestamps: number[] = [];
+            
+            // Build a map of note-offs to their paired note-ons using FIFO matching
+            const recordingBuffer = this.recordingEvents.get(trackId) || [];
+            const noteOnStacks = new Map<number, MIDIEvent[]>();
+            const noteOffToPairedNoteOn = new Map<MIDIEvent, MIDIEvent>();
+            
+            // Scan through recording buffer to capture pairings
+            recordingBuffer.forEach(e => {
+              if (e.type === 'noteOn' && e.velocity && e.velocity > 0 && e.note !== undefined) {
+                if (!noteOnStacks.has(e.note)) {
+                  noteOnStacks.set(e.note, []);
+                }
+                noteOnStacks.get(e.note)!.push(e);
+              } else if ((e.type === 'noteOff' || (e.type === 'noteOn' && e.velocity === 0)) && e.note !== undefined) {
+                const stack = noteOnStacks.get(e.note);
+                if (stack && stack.length > 0) {
+                  const pairedNoteOn = stack.shift()!; // Remove and capture the paired note-on
+                  noteOffToPairedNoteOn.set(e, pairedNoteOn);
+                }
+              }
+            });
+            
+            pendingEvents.forEach(e => {
+              timestamps.push(e.timestamp);
+              
+              // For note-off events, include the corresponding note-on timestamp
+              if ((e.type === 'noteOff' || (e.type === 'noteOn' && e.velocity === 0)) && e.note !== undefined) {
+                const pairedNoteOn = noteOffToPairedNoteOn.get(e);
+                if (pairedNoteOn) {
+                  timestamps.push(pairedNoteOn.timestamp);
+                }
+              }
+            });
+            
+            const t0 = Math.min(...timestamps);
+            const t1 = Math.max(...timestamps);
+            
             this.recordBufferUpdateListeners.forEach(listener => {
               listener(trackId, {
-                added: [midiEvent!],
+                added: pendingEvents,
                 changedRange: { t0, t1 }
               });
             });
           }
-        }
-      });
-      
-      if (shouldEmit) {
+        });
+        
+        // Clear pending events after emit
+        this.pendingEventsByTrack.clear();
         this.lastEmitTime = now;
       }
     }
@@ -268,6 +350,8 @@ export class SequencerEngine {
     });
     
     this.recordingEvents.clear();
+    this.activeNotesByTrack.clear();
+    this.pendingEventsByTrack.clear();
   }
 
   startPlayback(trackIds?: number[]) {
