@@ -3,6 +3,9 @@ import { audioClock } from './audio-clock';
 import { midiManager } from './midi';
 import { metronome } from './metronome';
 
+type RecordBufferUpdateListener = (trackId: number, data: { added: MIDIEvent[], changedRange: { t0: number, t1: number } }) => void;
+type TakeCommittedListener = (trackId: number, data: { ranges: Array<{ t0: number, t1: number }> }) => void;
+
 export class SequencerEngine {
   private project: Project;
   private isRecording = false;
@@ -15,6 +18,11 @@ export class SequencerEngine {
   private quantizeValue = 0; // 0 = off, 1/4, 1/8, 1/16, etc.
   private midiThruEnabled = false;
   private clockMode: 'off' | 'send' | 'receive' = 'off';
+  
+  private recordBufferUpdateListeners: RecordBufferUpdateListener[] = [];
+  private takeCommittedListeners: TakeCommittedListener[] = [];
+  private lastEmitTime = 0;
+  private emitThrottleMs = 50; // 50ms = ~20 updates per second
 
   constructor() {
     this.project = this.createEmptyProject();
@@ -67,6 +75,20 @@ export class SequencerEngine {
     const midiReady = await midiManager.initialize();
     await metronome.initialize();
     return clockReady && midiReady;
+  }
+
+  onRecordBufferUpdate(listener: RecordBufferUpdateListener) {
+    this.recordBufferUpdateListeners.push(listener);
+    return () => {
+      this.recordBufferUpdateListeners = this.recordBufferUpdateListeners.filter(l => l !== listener);
+    };
+  }
+
+  onTakeCommitted(listener: TakeCommittedListener) {
+    this.takeCommittedListeners.push(listener);
+    return () => {
+      this.takeCommittedListeners = this.takeCommittedListeners.filter(l => l !== listener);
+    };
   }
 
   setMetronome(enabled: boolean) {
@@ -188,12 +210,32 @@ export class SequencerEngine {
 
     // Only record the event if we're actually recording
     if (this.isRecording && midiEvent) {
+      const now = Date.now();
+      const shouldEmit = now - this.lastEmitTime >= this.emitThrottleMs;
+      
       this.recordingEvents.forEach((events, trackId) => {
         const track = this.getCurrentPart().tracks.find(t => t.id === trackId);
         if (track && track.channel === channel) {
+          const eventsBefore = events.length;
           events.push(midiEvent!);
+          
+          // Emit throttled update if enough time has passed
+          if (shouldEmit && this.recordBufferUpdateListeners.length > 0) {
+            const t0 = midiEvent!.timestamp;
+            const t1 = midiEvent!.timestamp + (midiEvent!.type === 'noteOn' ? 1 : 0);
+            this.recordBufferUpdateListeners.forEach(listener => {
+              listener(trackId, {
+                added: [midiEvent!],
+                changedRange: { t0, t1 }
+              });
+            });
+          }
         }
       });
+      
+      if (shouldEmit) {
+        this.lastEmitTime = now;
+      }
     }
   }
 
@@ -203,13 +245,25 @@ export class SequencerEngine {
     // Commit recorded events to tracks (append, don't replace)
     this.recordingEvents.forEach((events, trackId) => {
       const track = this.getCurrentPart().tracks.find(t => t.id === trackId);
-      if (track) {
+      if (track && events.length > 0) {
         const newEvents = this.quantizeValue > 0 
           ? this.quantizeEvents(events, this.quantizeValue)
           : events;
         
+        // Calculate time ranges for the committed events
+        const timestamps = newEvents.map(e => e.timestamp);
+        const t0 = Math.min(...timestamps);
+        const t1 = Math.max(...timestamps);
+        
         // Append new events to existing ones and sort
         track.events = [...track.events, ...newEvents].sort((a, b) => a.timestamp - b.timestamp);
+        
+        // Emit takeCommitted event
+        if (this.takeCommittedListeners.length > 0) {
+          this.takeCommittedListeners.forEach(listener => {
+            listener(trackId, { ranges: [{ t0, t1 }] });
+          });
+        }
       }
     });
     
