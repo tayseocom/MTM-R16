@@ -304,16 +304,42 @@ export default function Home() {
     if (editMode === 'load') return 'LOAD: SELECT FILE';
     if (editMode === 'save') return 'SAVE: ENTER NAME';
     if (editMode === 'midi_chan') return 'MIDI CHAN: SELECT TRACK';
-    return `PART ${currentPart.toString().padStart(2, '0')}  ${tempo} BPM`;
+    
+    const part = sequencerEngine.getCurrentPart();
+    const partInfo = `PART ${currentPart.toString().padStart(2, '0')} (${part.length} BARS)`;
+    
+    if (currentSong && transportState === 'playing') {
+      const song = project.songs.find(s => s.id === currentSong);
+      return song ? `SONG: ${song.name}  ${tempo} BPM` : `${partInfo}  ${tempo} BPM`;
+    }
+    
+    return `${partInfo}  ${tempo} BPM`;
   };
 
   const getLCDSubText = () => {
     if (!midiReady) return 'OPEN IN CHROME/EDGE FOR MIDI';
-    if (transportState === 'recording') return 'RECORDING...';
+    if (transportState === 'recording') {
+      const trackList = armedTracks.length > 0 ? armedTracks.join(',') : selectedTracks.join(',');
+      return `RECORDING TRK ${trackList}`;
+    }
     if (transportState === 'countIn') return 'COUNT IN: 1...2...3...4...';
+    
+    if (transportState === 'playing' && currentSong) {
+      const activeSong = songPlayer.getSong();
+      if (activeSong) {
+        const stepNum = songPlayer.getCurrentStepIndex() + 1;
+        const totalSteps = activeSong.steps.length;
+        return `SONG STEP ${stepNum}/${totalSteps}`;
+      }
+    }
+    
     if (transportState === 'playing') return 'PLAYING';
-    if (editMode !== 'none') return 'USE NUMPAD OR TRACKS';
-    return `TRACKS ${selectedTracks.join(', ')} SELECTED`;
+    if (editMode !== 'none') return 'PRESS BUTTON OR TRACK';
+    
+    const part = sequencerEngine.getCurrentPart();
+    const recordedTracks = part.tracks.filter(t => t.events.length > 0).length;
+    if (recordedTracks === 0) return 'NO TRACKS RECORDED';
+    return `${recordedTracks} TRACK${recordedTracks === 1 ? '' : 'S'} RECORDED`;
   };
 
   const saveToLocalStorage = () => {
