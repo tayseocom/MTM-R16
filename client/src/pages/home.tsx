@@ -9,10 +9,12 @@ import PageButtons from '@/components/PageButtons';
 import MIDIDeviceSelect from '@/components/MIDIDeviceSelect';
 import { FAQDialog } from '@/components/FAQDialog';
 import PianoRollDialog from '@/components/PianoRollDialog';
+import SongModeDialog from '@/components/SongModeDialog';
 import { Download, Upload } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { midiManager } from '@/lib/midi';
 import { sequencerEngine } from '@/lib/sequencer-engine';
+import { songPlayer } from '@/lib/song-player';
 import type { TransportState, EditMode, Project, MIDIEvent } from '@shared/schema';
 
 export default function Home() {
@@ -33,6 +35,7 @@ export default function Home() {
   const [midiEchoEnabled, setMidiEchoEnabled] = useState(false);
   const [clockMode, setClockMode] = useState<'off' | 'send' | 'receive'>('off');
   const [pianoRollOpen, setPianoRollOpen] = useState(false);
+  const [songModeOpen, setSongModeOpen] = useState(false);
   const [currentPosition, setCurrentPosition] = useState(0);
   const [liveNotes, setLiveNotes] = useState<Map<number, { velocity: number; timestamp: number }>>(new Map());
 
@@ -82,12 +85,20 @@ export default function Home() {
       }
     }
 
+    // Register part boundary listener for song mode
+    const unsubscribe = sequencerEngine.onPartBoundary(() => {
+      songPlayer.onPartBoundary();
+    });
+
     // Poll for current position during playback
     const positionInterval = setInterval(() => {
       setCurrentPosition(sequencerEngine.getCurrentTick());
     }, 50);
 
-    return () => clearInterval(positionInterval);
+    return () => {
+      clearInterval(positionInterval);
+      unsubscribe();
+    };
   }, []);
 
   const updateDevices = () => {
@@ -172,6 +183,11 @@ export default function Home() {
   const handleModeClick = (mode: EditMode) => {
     if (mode === 'edit') {
       setPianoRollOpen(true);
+      return;
+    }
+    
+    if (mode === 'song') {
+      setSongModeOpen(true);
       return;
     }
     
@@ -321,6 +337,13 @@ export default function Home() {
       }
     };
     input.click();
+  };
+
+  const handleProjectChange = (project: Project) => {
+    sequencerEngine.loadProject(project);
+    setTempo(project.tempo);
+    setCurrentPart((project.currentPart || 0) + 1);
+    saveToLocalStorage();
   };
 
   return (
@@ -506,6 +529,13 @@ export default function Home() {
         onEventsChange={handlePianoRollEventsChange}
         currentPosition={currentPosition}
         liveNotes={liveNotes}
+      />
+
+      <SongModeDialog
+        open={songModeOpen}
+        onOpenChange={setSongModeOpen}
+        project={sequencerEngine.getProject()}
+        onProjectChange={handleProjectChange}
       />
     </div>
   );
