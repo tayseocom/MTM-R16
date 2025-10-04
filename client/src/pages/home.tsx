@@ -4,8 +4,6 @@ import TransportControls from '@/components/TransportControls';
 import TrackButton from '@/components/TrackButton';
 import ControlGrid from '@/components/ControlGrid';
 import RightPanel from '@/components/RightPanel';
-import NumPad from '@/components/NumPad';
-import PageButtons from '@/components/PageButtons';
 import MIDIDeviceSelect from '@/components/MIDIDeviceSelect';
 import { FAQDialog } from '@/components/FAQDialog';
 import PianoRollDialog from '@/components/PianoRollDialog';
@@ -230,6 +228,64 @@ export default function Home() {
       }
       return;
     }
+
+    if (mode === 'quantize') {
+      const options = ['OFF', '1/4', '1/8', '1/16', '1/32'];
+      const choice = prompt('Select quantize:\n0=OFF, 1=1/4, 2=1/8, 3=1/16, 4=1/32', '0');
+      if (choice !== null) {
+        const num = parseInt(choice);
+        const quantizeMap: Record<number, number> = { 0: 0, 1: 1/4, 2: 1/8, 3: 1/16, 4: 1/32 };
+        if (num >= 0 && num <= 4) {
+          sequencerEngine.setQuantize(quantizeMap[num]);
+        }
+      }
+      return;
+    }
+
+    if (mode === 'part') {
+      const partNum = prompt('Select part (1-9):', currentPart.toString());
+      if (partNum) {
+        const num = parseInt(partNum);
+        if (!isNaN(num) && num >= 1 && num <= 9) {
+          setCurrentPart(num);
+          sequencerEngine.getProject().currentPart = num - 1;
+          saveToLocalStorage();
+        } else {
+          alert('Invalid part number. Please enter 1-9.');
+        }
+      }
+      return;
+    }
+
+    if (mode === 'transpose') {
+      const semitones = prompt('Transpose semitones (-12 to +12):', '0');
+      if (semitones !== null) {
+        const num = parseInt(semitones);
+        if (!isNaN(num) && num >= -12 && num <= 12) {
+          selectedTracks.forEach(trackId => {
+            sequencerEngine.transposeTrack(trackId, num);
+          });
+          saveToLocalStorage();
+        } else {
+          alert('Invalid transpose. Please enter -12 to +12.');
+        }
+      }
+      return;
+    }
+
+    if (mode === 'copy') {
+      const destPart = prompt(`Copy Part ${currentPart} to part (1-9):`, '');
+      if (destPart) {
+        const num = parseInt(destPart);
+        if (!isNaN(num) && num >= 1 && num <= 9) {
+          sequencerEngine.copyPart(currentPart, num);
+          saveToLocalStorage();
+        } else {
+          alert('Invalid destination. Please enter 1-9.');
+        }
+      }
+      return;
+    }
     
     const newMode = editMode === mode ? 'none' : mode;
     setEditMode(newMode);
@@ -248,39 +304,6 @@ export default function Home() {
     }
   };
 
-  const handleNumPadClick = (num: number) => {
-    switch (editMode) {
-      case 'quantize':
-        // Quantize values: 1=1/4, 2=1/8, 3=1/16, 4=1/32
-        const quantizeMap: Record<number, number> = { 0: 0, 1: 1/4, 2: 1/8, 3: 1/16, 4: 1/32 };
-        sequencerEngine.setQuantize(quantizeMap[num] || 0);
-        setEditMode('none');
-        break;
-      case 'part':
-        setCurrentPart(num);
-        sequencerEngine.getProject().currentPart = num - 1;
-        saveToLocalStorage();
-        setEditMode('none');
-        break;
-      case 'transpose':
-        const semitones = num - 5; // -5 to +5 semitones
-        selectedTracks.forEach(trackId => {
-          sequencerEngine.transposeTrack(trackId, semitones);
-        });
-        saveToLocalStorage();
-        setEditMode('none');
-        break;
-      case 'copy':
-        if (num > 0 && num <= 9) {
-          sequencerEngine.copyPart(currentPart, num);
-          saveToLocalStorage();
-          setEditMode('none');
-        }
-        break;
-      default:
-        console.log('Number clicked:', num);
-    }
-  };
 
   const handleTrackClickInEditMode = (trackNum: number) => {
     if (editMode === 'merge' && selectedTracks.length > 0) {
@@ -294,12 +317,8 @@ export default function Home() {
 
   const getLCDText = () => {
     if (!midiReady) return 'NO MIDI - DEMO MODE';
-    if (editMode === 'quantize') return 'QUANTIZE: SELECT VALUE';
-    if (editMode === 'part') return 'PART: SELECT NUMBER';
-    if (editMode === 'copy') return 'COPY: SELECT DESTINATION';
     if (editMode === 'merge') return 'MERGE: SELECT TRACKS';
     if (editMode === 'erase') return 'ERASE: CONFIRM?';
-    if (editMode === 'transpose') return 'TRANSPOSE: SEMITONES';
     if (editMode === 'song') return 'SONG MODE: BUILD CHAIN';
     if (editMode === 'load') return 'LOAD: SELECT FILE';
     if (editMode === 'save') return 'SAVE: ENTER NAME';
@@ -450,14 +469,10 @@ export default function Home() {
         {/* Main Panel */}
         <div className="bg-card border-2 border-border rounded-lg p-6 space-y-6">
           {/* LCD Display and Controls Row */}
-          <div className="grid grid-cols-1 lg:grid-cols-[1fr_auto_auto] gap-4 items-start">
+          <div className="grid grid-cols-1 lg:grid-cols-[1fr_auto] gap-4 items-start">
             <LCDDisplay 
               mainText={getLCDText()}
               subText={getLCDSubText()}
-            />
-            <NumPad 
-              onNumberClick={handleNumPadClick}
-              onMinusClick={() => handleNumPadClick(0)}
             />
             <RightPanel 
               loopEnabled={loopEnabled}
@@ -554,10 +569,6 @@ export default function Home() {
               onEraseClick={() => handleModeClick('erase')}
               onLoadSaveClick={() => handleModeClick('load')}
               onMidiChanClick={() => handleModeClick('midi_chan')}
-            />
-            <PageButtons 
-              onPageDown={() => console.log('Page Down')}
-              onPageUp={() => console.log('Page Up')}
             />
           </div>
         </div>
