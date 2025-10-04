@@ -1,0 +1,55 @@
+import { cn } from "@/lib/utils";
+import { ReactNode } from "react";
+import LED from "./LED";
+
+interface HardwareButtonProps {
+  label: string;
+  onClick?: () => void;
+  active?: boolean;
+  led?: 'red' | 'green' | 'amber' | 'orange' | 'off';
+  ledPulse?: boolean;
+  variant?: 'default' | 'play' | 'stop' | 'record';
+  icon?: ReactNode;
+  className?: string;
+  dataTestId?: string;
+}
+
+export default function HardwareButton({ 
+  label, 
+  onClick, 
+  active, 
+  led,
+  ledPulse,
+  variant = 'default',
+  icon,
+  className,
+  dataTestId
+}: HardwareButtonProps) {
+  const variantClasses = {
+    default: 'bg-card hover-elevate active-elevate-2',
+    play: 'bg-primary/20 border-primary/30 hover-elevate active-elevate-2',
+    stop: 'bg-muted hover-elevate active-elevate-2',
+    record: 'bg-destructive/20 border-destructive/30 hover-elevate active-elevate-2',
+  };
+
+  return (
+    <button
+      onClick={onClick}
+      className={cn(
+        "relative flex flex-col items-center justify-center gap-1 p-2 rounded-md border transition-all min-h-[2.5rem]",
+        active && "ring-2 ring-accent",
+        variantClasses[variant],
+        className
+      )}
+      data-testid={dataTestId || `button-${label.toLowerCase().replace(/\s+/g, '-')}`}
+    >
+      {led && (
+        <LED color={led} pulse={ledPulse} className="absolute top-1 right-1" />
+      )}
+      {icon && <div className="text-foreground">{icon}</div>}
+      <span className="text-[10px] font-bold uppercase text-foreground tracking-tight leading-tight text-center">
+        {label}
+      </span>
+    </button>
+  );
+}
