@@ -58,10 +58,12 @@ Preferred communication style: Simple, everyday language.
 
 **Data Model**:
 - **Project**: Contains tempo, parts, songs, and current state
-- **Part**: Named section with length (in bars) containing 16 tracks
+- **Part**: Named section with configurable length (1-64 bars) containing 16 tracks
 - **Track**: Individual MIDI channel with events, name, mute state
 - **MIDI Events**: Timestamped note on/off, CC, program change messages
 - **Song**: Ordered sequence of parts with loop points
+
+**Part Length Management**: Each part has an adjustable length (1-64 bars, default 4 bars). Users set part length via the LENGTH button which displays a prompt dialog. The length determines how many bars the part plays/records before looping. Part length is validated, persisted to localStorage, and immediately reflected in playback/recording behavior.
 
 ### State Persistence
 
