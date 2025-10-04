@@ -14,7 +14,7 @@ import { Button } from '@/components/ui/button';
 import { midiManager } from '@/lib/midi';
 import { sequencerEngine } from '@/lib/sequencer-engine';
 import { songPlayer } from '@/lib/song-player';
-import type { TransportState, EditMode, Project, MIDIEvent, Track } from '@shared/schema';
+import type { TransportState, EditMode, Project, MIDIEvent } from '@shared/schema';
 
 export default function Home() {
   const [transportState, setTransportState] = useState<TransportState>('stopped');
@@ -256,26 +256,13 @@ export default function Home() {
         break;
       case 'part':
         if (num >= 1 && num <= 9) {
-          const project = sequencerEngine.getProject();
-          // Ensure the part exists, create if needed
-          if (!project.parts[num - 1]) {
-            const tracks: Track[] = Array.from({ length: 16 }, (_, i) => ({
-              id: i + 1,
-              name: `Track ${i + 1}`,
-              channel: i,
-              muted: false,
-              events: []
-            }));
-            project.parts[num - 1] = {
-              id: num,
-              name: `Part ${num}`,
-              length: 4,
-              tracks
-            };
-          }
+          // Ensure the part exists in the sequencer engine
+          sequencerEngine.ensurePartExists(num - 1);
+          // Update current part in the engine
+          sequencerEngine.getProject().currentPart = num - 1;
+          // Sync React state with engine's canonical project
+          setProject(structuredClone(sequencerEngine.getProject()));
           setCurrentPart(num);
-          project.currentPart = num - 1;
-          setProject(structuredClone(project));
           saveToLocalStorage();
           setEditMode('none');
         }

@@ -522,6 +522,25 @@ export class SequencerEngine {
     return this.project.parts[this.project.currentPart];
   }
 
+  ensurePartExists(partIndex: number): void {
+    if (!this.project.parts[partIndex]) {
+      const tracks: Track[] = Array.from({ length: 16 }, (_, i) => ({
+        id: i + 1,
+        name: `Track ${i + 1}`,
+        channel: i,
+        muted: false,
+        events: []
+      }));
+      
+      this.project.parts[partIndex] = {
+        id: partIndex + 1,
+        name: `Part ${partIndex + 1}`,
+        length: 4,
+        tracks
+      };
+    }
+  }
+
   getProject(): Project {
     return this.project;
   }
