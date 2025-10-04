@@ -146,17 +146,17 @@ export default function SongEditor({
         {/* Step List Editor (Left Pane) */}
         <div className="space-y-2">
           <div className="flex items-center justify-between">
-            <h3 className="text-lg font-semibold">Steps</h3>
+            <h3 className="text-lg font-semibold">Song Sections</h3>
             <Popover>
               <PopoverTrigger asChild>
                 <Button size="sm" data-testid="button-add-step">
                   <Plus className="w-4 h-4 mr-2" />
-                  Add Step
+                  Add Section
                 </Button>
               </PopoverTrigger>
               <PopoverContent className="w-64">
                 <div className="space-y-2">
-                  <h4 className="font-semibold text-sm">Select Part</h4>
+                  <h4 className="font-semibold text-sm">Select Part to Add</h4>
                   <div className="grid grid-cols-2 gap-2">
                     {parts.map(part => (
                       <Button
