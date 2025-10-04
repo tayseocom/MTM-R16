@@ -6,7 +6,8 @@ export class MIDIManager {
 
   async initialize() {
     if (!navigator.requestMIDIAccess) {
-      throw new Error('Web MIDI API not supported');
+      console.warn('Web MIDI API not supported in this environment');
+      return false;
     }
 
     try {
