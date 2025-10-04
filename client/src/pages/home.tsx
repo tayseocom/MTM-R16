@@ -7,6 +7,7 @@ import RightPanel from '@/components/RightPanel';
 import NumPad from '@/components/NumPad';
 import PageButtons from '@/components/PageButtons';
 import MIDIDeviceSelect from '@/components/MIDIDeviceSelect';
+import { FAQDialog } from '@/components/FAQDialog';
 import { Download, Upload } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { midiManager } from '@/lib/midi';
@@ -269,7 +270,8 @@ export default function Home() {
             </h1>
             <h2 className="text-4xl font-bold text-primary font-mono" data-testid="model">MTM-R16</h2>
           </div>
-          <div className="flex gap-2">
+          <div className="flex gap-2 items-center">
+            <FAQDialog />
             <Button 
               variant="outline" 
               onClick={handleLoadProject}
