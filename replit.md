@@ -200,6 +200,15 @@ The piano roll editor is a fully functional note editor with canvas-based render
 - Handles overlapping notes of same pitch correctly
 - Stable sort ensures note-offs processed before note-ons at same timestamp
 
+**Live Recording Updates**:
+- Event emission system with `recordBufferUpdate` and `takeCommitted` events
+- Throttled updates every 50ms during recording (max 20 updates/sec)
+- FIFO-based range calculation captures correct note-on timestamps for overlapping notes
+- Uses `noteOffToPairedNoteOn` map to preserve paired note-on events during stack operations
+- Piano roll subscribes to events and updates only when changed range intersects viewport
+- Combines committed track events with live recording buffer for seamless display
+- Incremental spatial index updates for efficient rendering
+
 **Playback Integration**:
 - Visual playhead shows current playback position
 - 50ms polling interval for smooth position tracking
