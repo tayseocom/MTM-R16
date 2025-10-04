@@ -35,6 +35,7 @@ export default function Home() {
       setMidiReady(ready);
       updateDevices();
       setTempo(sequencerEngine.getProject().tempo);
+      sequencerEngine.setMetronome(metroEnabled);
     });
 
     // Load from localStorage on mount
@@ -308,7 +309,11 @@ export default function Home() {
               metroEnabled={metroEnabled}
               tempo={tempo}
               onLoopClick={() => setLoopEnabled(!loopEnabled)}
-              onMetroClick={() => setMetroEnabled(!metroEnabled)}
+              onMetroClick={() => {
+                const newMetroState = !metroEnabled;
+                setMetroEnabled(newMetroState);
+                sequencerEngine.setMetronome(newMetroState);
+              }}
               onTempoClick={() => {
                 const newTempo = prompt('Enter tempo (40-250 BPM):', tempo.toString());
                 if (newTempo) {

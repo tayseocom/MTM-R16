@@ -1,6 +1,7 @@
 import type { MIDIEvent, Track, Part, Project } from '@shared/schema';
 import { audioClock } from './audio-clock';
 import { midiManager } from './midi';
+import { metronome } from './metronome';
 
 export class SequencerEngine {
   private project: Project;
@@ -53,12 +54,22 @@ export class SequencerEngine {
     audioClock.setBeatListener((beat, bar, timestamp) => {
       // Beat callback for UI updates
     });
+
+    audioClock.setMetronomeListener((accent) => {
+      metronome.playClick(accent);
+    });
   }
 
   async initialize() {
     const clockReady = await audioClock.initialize();
     const midiReady = await midiManager.initialize();
+    await metronome.initialize();
     return clockReady && midiReady;
+  }
+
+  setMetronome(enabled: boolean) {
+    metronome.setEnabled(enabled);
+    audioClock.setMetronome(enabled);
   }
 
   setTempo(tempo: number) {
