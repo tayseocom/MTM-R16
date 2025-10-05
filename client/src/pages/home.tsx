@@ -173,6 +173,24 @@ export default function Home() {
     setArmedTracks([]);
   };
 
+  const handleRewind = () => {
+    const newPart = currentPart === 1 ? 9 : currentPart - 1;
+    sequencerEngine.ensurePartExists(newPart - 1);
+    sequencerEngine.getProject().currentPart = newPart - 1;
+    setProject(structuredClone(sequencerEngine.getProject()));
+    setCurrentPart(newPart);
+    saveToLocalStorage();
+  };
+
+  const handleForward = () => {
+    const newPart = currentPart === 9 ? 1 : currentPart + 1;
+    sequencerEngine.ensurePartExists(newPart - 1);
+    sequencerEngine.getProject().currentPart = newPart - 1;
+    setProject(structuredClone(sequencerEngine.getProject()));
+    setCurrentPart(newPart);
+    saveToLocalStorage();
+  };
+
   const handleRecord = () => {
     if (!midiReady) {
       alert('Web MIDI not available. Please open in Chrome/Edge with MIDI devices connected.');
@@ -520,8 +538,8 @@ export default function Home() {
               onPlay={handlePlay}
               onStop={handleStop}
               onRecord={handleRecord}
-              onRewind={() => console.log('Rewind')}
-              onForward={() => console.log('Forward')}
+              onRewind={handleRewind}
+              onForward={handleForward}
             />
           </div>
 
