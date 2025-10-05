@@ -607,6 +607,7 @@ export default function Home() {
         onEventsChange={handlePianoRollEventsChange}
         currentPosition={currentPosition}
         liveNotes={liveNotes}
+        partLength={sequencerEngine.getCurrentPart().length}
       />
 
       <SongModeDialog
