@@ -371,13 +371,17 @@ export default function Home() {
     }
   };
 
-  const getCurrentTrackEvents = (): MIDIEvent[] => {
+  const getCurrentTrack = () => {
     if (selectedTracks.length > 0) {
       const part = sequencerEngine.getCurrentPart();
-      const track = part.tracks.find(t => t.id === selectedTracks[0]);
-      return track?.events || [];
+      return part.tracks.find(t => t.id === selectedTracks[0]);
     }
-    return [];
+    return undefined;
+  };
+
+  const getCurrentTrackEvents = (): MIDIEvent[] => {
+    const track = getCurrentTrack();
+    return track?.events || [];
   };
 
   const handleSaveProject = () => {
@@ -603,6 +607,7 @@ export default function Home() {
         open={pianoRollOpen}
         onOpenChange={setPianoRollOpen}
         trackNumber={selectedTracks[0] || 1}
+        trackName={getCurrentTrack()?.name || `Track ${selectedTracks[0] || 1}`}
         events={getCurrentTrackEvents()}
         onEventsChange={handlePianoRollEventsChange}
         currentPosition={currentPosition}

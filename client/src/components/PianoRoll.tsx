@@ -18,6 +18,7 @@ interface PianoNote {
 
 interface PianoRollProps {
   trackId: number;
+  trackName: string;
   events: MIDIEvent[];
   onEventsChange: (events: MIDIEvent[]) => void;
   currentPosition?: number;
@@ -37,7 +38,7 @@ interface DragState {
   startSelSnapshot?: Record<string, { t: number; nn: number }>;
 }
 
-export default function PianoRoll({ trackId, events, onEventsChange, currentPosition = 0, liveNotes, partLength }: PianoRollProps) {
+export default function PianoRoll({ trackId, trackName, events, onEventsChange, currentPosition = 0, liveNotes, partLength }: PianoRollProps) {
   const gridRef = useRef<HTMLCanvasElement>(null);
   const pianoRef = useRef<HTMLCanvasElement>(null);
   const overlayRef = useRef<HTMLCanvasElement>(null);
@@ -693,8 +694,20 @@ export default function PianoRoll({ trackId, events, onEventsChange, currentPosi
 
   return (
     <div className="flex flex-col h-full bg-[#1b1c1f]">
-      <div className="flex gap-3 items-center px-3 py-2 bg-[#2a2d31] border-b border-black/50 sticky top-0 z-10">
-        <div className="flex gap-2 items-center">
+      <div className="flex flex-col sticky top-0 z-10">
+        <div className="flex gap-2 items-center px-3 py-2 bg-[#1e2024] border-b border-black/30">
+          <button className="px-4 py-1.5 rounded-t-md bg-primary/20 border-b-2 border-primary text-primary text-sm font-medium" data-testid="tab-piano-roll">
+            Piano Roll
+          </button>
+          <button className="px-4 py-1.5 rounded-t-md text-[#6b7280] text-sm font-medium hover-elevate" data-testid="tab-score">
+            Score
+          </button>
+        </div>
+        <div className="flex gap-3 items-center px-3 py-2 bg-[#2a2d31] border-b border-black/50">
+          <div className="flex gap-2 items-center">
+            <div className="inline-flex items-center px-3 py-1 rounded-md bg-primary/20 border border-primary/40 text-primary text-sm font-medium" data-testid="track-name-badge">
+              {trackName}
+            </div>
           <label className="text-sm text-[#dfe3e8]">
             Tool
             <select
@@ -768,9 +781,10 @@ export default function PianoRoll({ trackId, events, onEventsChange, currentPosi
           >
             Delete
           </button>
-        </div>
-        <div className="ml-auto text-xs text-[#9aa1aa]">
-          Drag to move • Edge-drag to trim • Alt = no snap • Alt+Wheel = horizontal scroll • Shift+Wheel = zoom X
+          </div>
+          <div className="ml-auto text-xs text-[#9aa1aa]">
+            Drag to move • Edge-drag to trim • Alt = no snap • Alt+Wheel = horizontal scroll • Shift+Wheel = zoom X
+          </div>
         </div>
       </div>
 
