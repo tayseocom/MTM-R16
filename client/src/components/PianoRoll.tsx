@@ -274,18 +274,18 @@ export default function PianoRoll({ trackId, events, onEventsChange, currentPosi
       const isWithinPart = bar < partLength;
       const isPartBoundary = bar === partLength;
       
-      // Draw bar line - stronger for bars within part, dimmed for bars outside
+      // Draw bar line - bright green for bars within part, dimmed for bars outside
       if (isPartBoundary) {
-        // Part boundary - draw a thicker, brighter line
-        ctx.strokeStyle = '#6b7280';
-        ctx.lineWidth = 2 * dpr;
+        // Part boundary - draw a thicker, bright yellow/orange line
+        ctx.strokeStyle = '#f59e0b';
+        ctx.lineWidth = 3 * dpr;
       } else if (isWithinPart) {
-        // Bars within part - normal visibility
-        ctx.strokeStyle = '#4b5563';
-        ctx.lineWidth = 1 * dpr;
+        // Bars within part - bright green like the example
+        ctx.strokeStyle = '#10b981';
+        ctx.lineWidth = 2 * dpr;
       } else {
-        // Bars outside part - dimmed
-        ctx.strokeStyle = '#2e3237';
+        // Bars outside part - very dimmed
+        ctx.strokeStyle = '#374151';
         ctx.lineWidth = 1 * dpr;
       }
       
@@ -294,22 +294,21 @@ export default function PianoRoll({ trackId, events, onEventsChange, currentPosi
       ctx.lineTo(x, gridRef.current.height);
       ctx.stroke();
 
-      // Draw beat divisions (only within part)
-      if (isWithinPart) {
-        for (let beat = 1; beat < BEATS_PER_BAR; beat++) {
-          const xb = Math.round(x + beat * (pxPerBar / BEATS_PER_BAR));
-          ctx.strokeStyle = '#2e3237';
-          ctx.lineWidth = 1 * dpr;
-          ctx.beginPath();
-          ctx.moveTo(xb, 0);
-          ctx.lineTo(xb, gridRef.current.height);
-          ctx.stroke();
-        }
+      // Draw beat divisions (within all visible bars for better orientation)
+      for (let beat = 1; beat < BEATS_PER_BAR; beat++) {
+        const xb = Math.round(x + beat * (pxPerBar / BEATS_PER_BAR));
+        // Brighter beat lines within part, dimmer outside
+        ctx.strokeStyle = isWithinPart ? '#4b5563' : '#2e3237';
+        ctx.lineWidth = 1 * dpr;
+        ctx.beginPath();
+        ctx.moveTo(xb, 0);
+        ctx.lineTo(xb, gridRef.current.height);
+        ctx.stroke();
       }
 
-      // Draw bar number - brighter for bars within part
-      ctx.fillStyle = isWithinPart ? '#9aa1aa' : '#4b5563';
-      ctx.font = `${12 * dpr}px monospace`;
+      // Draw bar number - bright for bars within part
+      ctx.fillStyle = isWithinPart ? '#d1d5db' : '#6b7280';
+      ctx.font = `${13 * dpr}px monospace`;
       ctx.textAlign = 'left';
       ctx.textBaseline = 'top';
       ctx.fillText(String(bar + 1), x + 4 * dpr, 4 * dpr);
