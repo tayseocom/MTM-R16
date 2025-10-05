@@ -263,29 +263,43 @@ export default function PianoRoll({ trackId, trackName, events, onEventsChange, 
     ctx.save();
     ctx.clearRect(0, 0, gridRef.current.width, gridRef.current.height);
 
+    const TIMELINE_HEIGHT = 24 * dpr;
+    
+    // Fill background
     ctx.fillStyle = '#2a2d31';
     ctx.fillRect(0, 0, gridRef.current.width, gridRef.current.height);
+
+    // Fill timeline strip with slightly darker background
+    ctx.fillStyle = '#1e2024';
+    ctx.fillRect(PIANO_WIDTH * dpr, 0, gridRef.current.width - PIANO_WIDTH * dpr, TIMELINE_HEIGHT);
 
     const pxPerBar = barsToPx();
     const startBar = Math.floor(scrollTicks / TICKS_PER_BAR);
     const endBar = startBar + barsVisible + 1;
 
+    // Draw key backgrounds FIRST (below timeline strip)
+    const kh = keyHeight();
+    for (let i = 0; i < keysVisible; i++) {
+      const nn = scrollKey + i;
+      const y = Math.round(gridRef.current.height - (i + 1) * kh);
+      ctx.fillStyle = isBlack(nn) ? '#272a2f' : '#2f3339';
+      ctx.fillRect(PIANO_WIDTH * dpr, Math.max(y, TIMELINE_HEIGHT), gridRef.current.width - PIANO_WIDTH * dpr, kh);
+    }
+
+    // Draw bar lines and beat divisions
     for (let bar = startBar; bar <= endBar; bar++) {
       const x = Math.round(PIANO_WIDTH * dpr + (bar - startBar) * pxPerBar);
       const isWithinPart = bar < partLength;
       const isPartBoundary = bar === partLength;
       
-      // Draw bar line - bright green for bars within part, dimmed for bars outside
+      // Draw bar line
       if (isPartBoundary) {
-        // Part boundary - draw a thicker, bright yellow/orange line
         ctx.strokeStyle = '#f59e0b';
         ctx.lineWidth = 3 * dpr;
       } else if (isWithinPart) {
-        // Bars within part - bright green like the example
         ctx.strokeStyle = '#10b981';
         ctx.lineWidth = 2 * dpr;
       } else {
-        // Bars outside part - very dimmed
         ctx.strokeStyle = '#374151';
         ctx.lineWidth = 1 * dpr;
       }
@@ -295,10 +309,9 @@ export default function PianoRoll({ trackId, trackName, events, onEventsChange, 
       ctx.lineTo(x, gridRef.current.height);
       ctx.stroke();
 
-      // Draw beat divisions (within all visible bars for better orientation)
+      // Draw beat divisions
       for (let beat = 1; beat < BEATS_PER_BAR; beat++) {
         const xb = Math.round(x + beat * (pxPerBar / BEATS_PER_BAR));
-        // Brighter beat lines within part, dimmer outside
         ctx.strokeStyle = isWithinPart ? '#4b5563' : '#2e3237';
         ctx.lineWidth = 1 * dpr;
         ctx.beginPath();
@@ -306,21 +319,28 @@ export default function PianoRoll({ trackId, trackName, events, onEventsChange, 
         ctx.lineTo(xb, gridRef.current.height);
         ctx.stroke();
       }
-
-      // Draw bar number - bright for bars within part
-      ctx.fillStyle = isWithinPart ? '#d1d5db' : '#6b7280';
-      ctx.font = `${13 * dpr}px monospace`;
-      ctx.textAlign = 'left';
-      ctx.textBaseline = 'top';
-      ctx.fillText(String(bar + 1), x + 4 * dpr, 4 * dpr);
     }
 
-    const kh = keyHeight();
-    for (let i = 0; i < keysVisible; i++) {
-      const nn = scrollKey + i;
-      const y = Math.round(gridRef.current.height - (i + 1) * kh);
-      ctx.fillStyle = isBlack(nn) ? '#272a2f' : '#2f3339';
-      ctx.fillRect(PIANO_WIDTH * dpr, y, gridRef.current.width - PIANO_WIDTH * dpr, kh);
+    // Draw timeline labels LAST (so they appear on top)
+    ctx.font = `${12 * dpr}px monospace`;
+    ctx.textBaseline = 'middle';
+    
+    for (let bar = startBar; bar <= endBar; bar++) {
+      const x = Math.round(PIANO_WIDTH * dpr + (bar - startBar) * pxPerBar);
+      const isWithinPart = bar < partLength;
+      
+      // Draw bar number
+      ctx.fillStyle = isWithinPart ? '#e5e7eb' : '#9ca3af';
+      ctx.textAlign = 'left';
+      ctx.fillText(String(bar + 1), x + 4 * dpr, TIMELINE_HEIGHT / 2);
+      
+      // Draw beat subdivision labels (1.3, 2.3, etc.)
+      for (let beat = 1; beat < BEATS_PER_BAR; beat++) {
+        const xb = Math.round(x + beat * (pxPerBar / BEATS_PER_BAR));
+        ctx.fillStyle = isWithinPart ? '#9ca3af' : '#6b7280';
+        ctx.textAlign = 'center';
+        ctx.fillText(`${bar + 1}.${beat}`, xb, TIMELINE_HEIGHT / 2);
+      }
     }
 
     ctx.restore();
