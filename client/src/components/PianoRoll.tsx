@@ -621,25 +621,24 @@ export default function PianoRoll({ trackId, events, onEventsChange, currentPosi
       if (e.key === 'e' || e.key === 'E') setTool('erase');
       
       if (e.key === 'Backspace' || e.key === 'Delete') {
-        setNotes(prev => prev.filter(n => !selection.has(n.id)));
+        const updated = notes.filter(n => !selection.has(n.id));
+        setNotes(updated);
         setSelection(new Set());
-        onEventsChange(notesToEvents(notes.filter(n => !selection.has(n.id))));
+        onEventsChange(notesToEvents(updated));
       }
       
       if (e.key === 'q' || e.key === 'Q') {
-        setNotes(prev => {
-          const updated = [...prev];
-          for (const id of Array.from(selection)) {
-            const n = updated.find(m => m.id === id);
-            if (n) {
-              n.t = snapTicks(n.t);
-              const end = snapTicks(n.t + n.dur);
-              n.dur = Math.max(2, end - n.t);
-            }
+        const updated = [...notes];
+        for (const id of Array.from(selection)) {
+          const n = updated.find(m => m.id === id);
+          if (n) {
+            n.t = snapTicks(n.t);
+            const end = snapTicks(n.t + n.dur);
+            n.dur = Math.max(2, end - n.t);
           }
-          return updated;
-        });
-        onEventsChange(notesToEvents(notes));
+        }
+        setNotes(updated);
+        onEventsChange(notesToEvents(updated));
       }
       
       if (e.key === 'ArrowUp' || e.key === 'ArrowDown') {
@@ -673,25 +672,24 @@ export default function PianoRoll({ trackId, events, onEventsChange, currentPosi
   }, [selection, snapDiv, notes]);
 
   const handleQuantize = () => {
-    setNotes(prev => {
-      const updated = [...prev];
-      for (const id of Array.from(selection)) {
-        const n = updated.find(m => m.id === id);
-        if (n) {
-          n.t = snapTicks(n.t);
-          const end = snapTicks(n.t + n.dur);
-          n.dur = Math.max(2, end - n.t);
-        }
+    const updated = [...notes];
+    for (const id of Array.from(selection)) {
+      const n = updated.find(m => m.id === id);
+      if (n) {
+        n.t = snapTicks(n.t);
+        const end = snapTicks(n.t + n.dur);
+        n.dur = Math.max(2, end - n.t);
       }
-      return updated;
-    });
-    onEventsChange(notesToEvents(notes));
+    }
+    setNotes(updated);
+    onEventsChange(notesToEvents(updated));
   };
 
   const handleDelete = () => {
-    setNotes(prev => prev.filter(n => !selection.has(n.id)));
+    const updated = notes.filter(n => !selection.has(n.id));
+    setNotes(updated);
     setSelection(new Set());
-    onEventsChange(notesToEvents(notes.filter(n => !selection.has(n.id))));
+    onEventsChange(notesToEvents(updated));
   };
 
   return (
