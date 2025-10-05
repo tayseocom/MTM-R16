@@ -271,24 +271,44 @@ export default function PianoRoll({ trackId, events, onEventsChange, currentPosi
 
     for (let bar = startBar; bar <= endBar; bar++) {
       const x = Math.round(PIANO_WIDTH * dpr + (bar - startBar) * pxPerBar);
+      const isWithinPart = bar < partLength;
+      const isPartBoundary = bar === partLength;
       
-      ctx.strokeStyle = '#3a3e44';
-      ctx.lineWidth = 1 * dpr;
+      // Draw bar line - stronger for bars within part, dimmed for bars outside
+      if (isPartBoundary) {
+        // Part boundary - draw a thicker, brighter line
+        ctx.strokeStyle = '#6b7280';
+        ctx.lineWidth = 2 * dpr;
+      } else if (isWithinPart) {
+        // Bars within part - normal visibility
+        ctx.strokeStyle = '#4b5563';
+        ctx.lineWidth = 1 * dpr;
+      } else {
+        // Bars outside part - dimmed
+        ctx.strokeStyle = '#2e3237';
+        ctx.lineWidth = 1 * dpr;
+      }
+      
       ctx.beginPath();
       ctx.moveTo(x, 0);
       ctx.lineTo(x, gridRef.current.height);
       ctx.stroke();
 
-      for (let beat = 1; beat < BEATS_PER_BAR; beat++) {
-        const xb = Math.round(x + beat * (pxPerBar / BEATS_PER_BAR));
-        ctx.strokeStyle = '#2e3237';
-        ctx.beginPath();
-        ctx.moveTo(xb, 0);
-        ctx.lineTo(xb, gridRef.current.height);
-        ctx.stroke();
+      // Draw beat divisions (only within part)
+      if (isWithinPart) {
+        for (let beat = 1; beat < BEATS_PER_BAR; beat++) {
+          const xb = Math.round(x + beat * (pxPerBar / BEATS_PER_BAR));
+          ctx.strokeStyle = '#2e3237';
+          ctx.lineWidth = 1 * dpr;
+          ctx.beginPath();
+          ctx.moveTo(xb, 0);
+          ctx.lineTo(xb, gridRef.current.height);
+          ctx.stroke();
+        }
       }
 
-      ctx.fillStyle = '#9aa1aa';
+      // Draw bar number - brighter for bars within part
+      ctx.fillStyle = isWithinPart ? '#9aa1aa' : '#4b5563';
       ctx.font = `${12 * dpr}px monospace`;
       ctx.textAlign = 'left';
       ctx.textBaseline = 'top';
