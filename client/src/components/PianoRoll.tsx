@@ -22,6 +22,7 @@ interface PianoRollProps {
   onEventsChange: (events: MIDIEvent[]) => void;
   currentPosition?: number;
   liveNotes?: Map<number, { velocity: number; timestamp: number }>;
+  partLength: number;
 }
 
 type Tool = 'select' | 'draw' | 'erase';
@@ -36,7 +37,7 @@ interface DragState {
   startSelSnapshot?: Record<string, { t: number; nn: number }>;
 }
 
-export default function PianoRoll({ trackId, events, onEventsChange, currentPosition = 0, liveNotes }: PianoRollProps) {
+export default function PianoRoll({ trackId, events, onEventsChange, currentPosition = 0, liveNotes, partLength }: PianoRollProps) {
   const gridRef = useRef<HTMLCanvasElement>(null);
   const pianoRef = useRef<HTMLCanvasElement>(null);
   const overlayRef = useRef<HTMLCanvasElement>(null);
@@ -45,7 +46,7 @@ export default function PianoRoll({ trackId, events, onEventsChange, currentPosi
 
   const [tool, setTool] = useState<Tool>('select');
   const [snapDiv, setSnapDiv] = useState(6); // 1/16
-  const [barsVisible, setBarsVisible] = useState(16);
+  const [barsVisible, setBarsVisible] = useState(partLength);
   const [keysVisible, setKeysVisible] = useState(24);
   const [scrollTicks, setScrollTicks] = useState(0);
   const [scrollKey, setScrollKey] = useState(48);
@@ -56,6 +57,11 @@ export default function PianoRoll({ trackId, events, onEventsChange, currentPosi
   const [isMouseDown, setIsMouseDown] = useState(false);
 
   const dpr = window.devicePixelRatio || 1;
+
+  // Update barsVisible when partLength changes
+  useEffect(() => {
+    setBarsVisible(partLength);
+  }, [partLength]);
 
   // Convert MIDI events to notes
   useEffect(() => {
