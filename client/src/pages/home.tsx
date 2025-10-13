@@ -180,17 +180,23 @@ export default function Home() {
       return;
     }
     if (transportState === 'recording') {
+      // Stop recording but continue playback
       sequencerEngine.stopRecording();
-      sequencerEngine.stop();
-      setTransportState('stopped');
+      setTransportState('playing');
       setArmedTracks([]);
       // Save to localStorage after recording
       saveToLocalStorage();
+    } else if (transportState === 'playing') {
+      // Punch-in: start recording on selected tracks while continuing playback
+      sequencerEngine.startRecording(selectedTracks, true);
+      setTransportState('recording');
+      setArmedTracks([...selectedTracks]);
     } else {
+      // Fresh recording: count-in then start from beginning
       setTransportState('countIn');
       setArmedTracks([...selectedTracks]);
       setTimeout(() => {
-        sequencerEngine.startRecording(selectedTracks);
+        sequencerEngine.startRecording(selectedTracks, false);
         setTransportState('recording');
       }, 2000);
     }

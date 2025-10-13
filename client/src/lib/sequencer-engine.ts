@@ -162,26 +162,49 @@ export class SequencerEngine {
     }
   }
 
-  startRecording(trackIds: number[]) {
+  startRecording(trackIds: number[], punchIn: boolean = false) {
     this.isRecording = true;
-    this.isPlaying = true;
-    this.recordStartTime = audioClock.getCurrentTime();
-    this.currentTick = 0;
     
     trackIds.forEach(id => {
       this.recordingEvents.set(id, []);
       this.activeNotesByTrack.set(id, new Map());
     });
     
-    // Clear pending events from previous recording session
-    this.pendingEventsByTrack.clear();
-    this.lastEmitTime = 0;
+    // Punch-in: continue from current position
+    if (punchIn && this.isPlaying) {
+      // Calculate offset based on current tick position
+      const ticksPerBeat = 24;
+      const currentBeat = this.currentTick / ticksPerBeat;
+      const offsetSeconds = (currentBeat / this.project.tempo) * 60;
+      this.recordStartTime = audioClock.getCurrentTime() - offsetSeconds;
+      
+      // Clear pending events but keep playing
+      this.pendingEventsByTrack.clear();
+      this.lastEmitTime = 0;
+      
+      // Re-schedule playback to include all unmuted tracks
+      this.schedulePlaybackEvents();
+      
+      // Metronome already on if playing
+    } else {
+      // Fresh recording: start from beginning
+      this.isPlaying = true;
+      this.recordStartTime = audioClock.getCurrentTime();
+      this.currentTick = 0;
+      
+      // Clear pending events from previous recording session
+      this.pendingEventsByTrack.clear();
+      this.lastEmitTime = 0;
+
+      // Schedule playback for all unmuted tracks
+      this.schedulePlaybackEvents();
+
+      audioClock.setMetronome(true);
+      audioClock.start();
+    }
 
     // MIDI input listener is now set up once during initialization
     // No need to set it again here
-
-    audioClock.setMetronome(true);
-    audioClock.start();
   }
 
   private handleMIDIInput(event: MIDIMessageEvent) {
