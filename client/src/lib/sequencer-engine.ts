@@ -423,10 +423,14 @@ export class SequencerEngine {
         const eventTick = Math.floor((event.timestamp / 60) * this.project.tempo * ticksPerBeat);
         const loopTick = eventTick % totalTicks;
         
+        // Override event's channel with track's assigned MIDI channel
+        // Track 1 = channel 0 (MIDI CH 1), Track 2 = channel 1 (MIDI CH 2), etc.
+        const eventWithTrackChannel = { ...event, channel: track.channel };
+        
         if (!this.playbackEvents.has(loopTick)) {
           this.playbackEvents.set(loopTick, []);
         }
-        this.playbackEvents.get(loopTick)!.push(event);
+        this.playbackEvents.get(loopTick)!.push(eventWithTrackChannel);
       });
     });
   }
