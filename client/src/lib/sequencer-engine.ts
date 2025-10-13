@@ -611,6 +611,18 @@ export class SequencerEngine {
     return this.currentTick;
   }
 
+  getPlaybackProgress(): number {
+    const part = this.getCurrentPart();
+    const ticksPerBeat = 24;
+    const beatsPerBar = 4;
+    const totalTicks = part.length * beatsPerBar * ticksPerBeat;
+    
+    if (totalTicks === 0) return 0;
+    
+    const positionInLoop = this.currentTick % totalTicks;
+    return positionInLoop / totalTicks;
+  }
+
   loadProject(project: Project) {
     this.project = project;
     this.setTempo(project.tempo);

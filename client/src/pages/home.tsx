@@ -37,6 +37,7 @@ export default function Home() {
   const [pianoRollOpen, setPianoRollOpen] = useState(false);
   const [songModeOpen, setSongModeOpen] = useState(false);
   const [currentPosition, setCurrentPosition] = useState(0);
+  const [playbackProgress, setPlaybackProgress] = useState(0);
   const [liveNotes, setLiveNotes] = useState<Map<number, { velocity: number; timestamp: number }>>(new Map());
   const [currentSong, setCurrentSong] = useState<string | null>(null);
   const [project, setProject] = useState<Project>(sequencerEngine.getProject());
@@ -125,6 +126,18 @@ export default function Home() {
       handleOutputChange(firstOutput.id);
     }
   }, [midiDevices.outputs]);
+
+  // Poll for playback progress only when playing/recording
+  useEffect(() => {
+    if (transportState === 'playing' || transportState === 'recording') {
+      const progressInterval = setInterval(() => {
+        setPlaybackProgress(sequencerEngine.getPlaybackProgress());
+      }, 50);
+      return () => clearInterval(progressInterval);
+    } else {
+      setPlaybackProgress(0); // Reset when stopped
+    }
+  }, [transportState]);
 
   const handleTempoChange = (newTempo: number) => {
     setTempo(newTempo);
@@ -564,6 +577,7 @@ export default function Home() {
                   armed={armedTracks.includes(num)}
                   playing={playingTracks.includes(num)}
                   muted={mutedTracks.includes(num)}
+                  progress={playbackProgress}
                   onClick={(e) => handleTrackClick(num, e.shiftKey)}
                 />
               ))}
@@ -577,6 +591,7 @@ export default function Home() {
                   armed={armedTracks.includes(num)}
                   playing={playingTracks.includes(num)}
                   muted={mutedTracks.includes(num)}
+                  progress={playbackProgress}
                   onClick={(e) => handleTrackClick(num, e.shiftKey)}
                 />
               ))}
