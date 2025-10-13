@@ -1,282 +1,117 @@
 # MTM-R16 Web MIDI Sequencer
 
 ## Overview
-
-MTM-R16 is a web-based MIDI sequencer that replicates the hardware interface of the Alesis MTT-8 multi-track MIDI recorder. The application provides 16-track recording, part-based sequencing, and precision timing through AudioWorklet processing. It operates entirely in the browser using the Web MIDI API and Web Audio API, with offline-first data persistence via localStorage (with database capabilities available via Drizzle ORM).
+MTM-R16 is a web-based MIDI sequencer that emulates the Alesis MMT-8 multi-track MIDI recorder. It offers 16-track recording, part-based sequencing, and precise timing using AudioWorklet. The application runs entirely in the browser, leveraging the Web MIDI API and Web Audio API, with offline-first data persistence via localStorage. The project's ambition is to provide a comprehensive, hardware-inspired MIDI sequencing experience within a web environment, targeting musicians and producers seeking a robust, browser-native tool.
 
 ## User Preferences
-
 Preferred communication style: Simple, everyday language.
 
 ## System Architecture
 
-### Frontend Architecture
+### Frontend
+- **Framework**: React with TypeScript via Vite.
+- **UI/UX**: Hardware skeuomorphic design replicating the MMT-8. Features include:
+    - `shadcn/ui` components (Radix UI + Tailwind CSS) for consistency and accessibility.
+    - Faithful recreation of physical layout, LCD display (phosphor green), and LED indicators.
+    - Emphasis on immediate feedback and high information density.
+- **State Management**: React hooks for UI; sequencer engine maintains its own state.
+- **Routing**: Wouter for client-side routing.
 
-**Framework**: React with TypeScript running on Vite for development and production builds.
-
-**UI Component System**: The application uses shadcn/ui components built on top of Radix UI primitives with Tailwind CSS for styling. This provides a consistent, accessible component library with dark mode support.
-
-**Design Philosophy**: Hardware skeuomorphic design that faithfully recreates the physical MTT-8 device interface. The UI emphasizes:
-- Hardware fidelity: Matching physical device layout and visual language
-- Immediate feedback: Every interaction provides instant visual confirmation
-- Information density: Professional tool aesthetic prioritizing data over whitespace
-- LCD display simulation with phosphor green text on dark background
-- LED indicators for track states (red/green/amber/orange)
-- Button states mimicking rubberized hardware buttons
-
-**State Management**: React hooks and component state for UI interactions. The sequencer engine maintains its own state separate from React components.
-
-**Routing**: Wouter for lightweight client-side routing (single page application with home route).
-
-### Backend Architecture
-
-**Server Framework**: Express.js serving as a minimal HTTP server. Currently configured with placeholder routes and in-memory storage.
-
-**Development Setup**: Vite middleware integration for hot module replacement during development, with production builds serving static assets.
-
-**Storage Layer**: Abstract storage interface (`IStorage`) with in-memory implementation (`MemStorage`). Database schema defined using Drizzle ORM with PostgreSQL dialect, though currently using localStorage for client-side persistence.
-
-**API Design**: RESTful endpoints prefixed with `/api` (routes to be implemented as needed).
+### Backend
+- **Server**: Minimal Express.js server (currently with placeholder routes).
+- **Development**: Vite integration for HMR.
+- **Storage Layer**: Abstract `IStorage` with in-memory implementation. Drizzle ORM schema defined for PostgreSQL, but `localStorage` is used for client-side persistence.
+- **API**: RESTful endpoints under `/api` (to be implemented).
 
 ### Core Sequencer Engine
-
-**Audio Timing**: Custom `AudioClock` class utilizing AudioWorklet processor for sub-2ms jitter timing precision. Falls back to JavaScript intervals if AudioWorklet is unavailable.
-
-**MIDI Management**: `MIDIManager` class wrapping the Web MIDI API to handle:
-- Device enumeration and connection
-- Input message routing
-- Output message scheduling
-- Real-time MIDI event transmission
-
-**Sequencer Engine**: `SequencerEngine` class coordinating:
-- Multi-part, multi-track recording and playback
-- Real-time quantization
-- Track arming, muting, and solo
-- Transport control (play, stop, record)
-- Event scheduling synchronized to audio clock
-- Project state management
-
-**Data Model**:
-- **Project**: Contains tempo, parts, songs, and current state
-- **Part**: Named section with configurable length (1-64 bars) containing 16 tracks
-- **Track**: Individual MIDI channel with events, name, mute state
-- **MIDI Events**: Timestamped note on/off, CC, program change messages
-- **Song**: Ordered sequence of parts with loop points
-
-**Part Length Management**: Each part has an adjustable length (1-64 bars, default 4 bars). Users set part length via the LENGTH button which displays a prompt dialog. The length determines how many bars the part plays/records before looping. Part length is validated, persisted to localStorage, and immediately reflected in playback/recording behavior.
-
-**MIDI Channel Per Track**: Each track is assigned a fixed MIDI channel (Track 1 → MIDI CH 1, Track 2 → MIDI CH 2, etc.), following the Alesis MMT-8 behavior. During playback, events are sent on the track's assigned MIDI channel regardless of the recorded channel, enabling multi-synth setups and multi-timbral device control. Track buttons display both track number and MIDI channel assignment (e.g., "TRACK 1 / CH 1"). The channel override occurs in `schedulePlaybackEvents()` where events are cloned with the track's channel before scheduling.
+- **Audio Timing**: `AudioClock` class uses AudioWorklet for sub-2ms jitter precision; falls back to JavaScript intervals.
+- **MIDI Management**: `MIDIManager` handles Web MIDI API interactions, including device enumeration, input routing, and output scheduling.
+- **Sequencer Engine**: `SequencerEngine` coordinates multi-part/multi-track recording and playback, real-time quantization, track control (arming, mute, solo), transport control, and event scheduling.
+- **Data Model**:
+    - **Project**: Tempo, parts, songs.
+    - **Part**: Named section (1-64 bars) with 16 tracks.
+    - **Track**: Individual MIDI channel with events, name, mute state. Fixed MIDI channel per track (e.g., Track 1 -> CH 1).
+    - **MIDI Events**: Timestamped note on/off, CC, program change.
+    - **Song**: Ordered sequence of parts with loop points.
+- **Multi-Select Track Workflow**: Supports selecting multiple tracks for playback and overdub recording. The "primary track" (last clicked) is used for recording.
+- **Part Length**: Adjustable from 1 to 64 bars.
 
 ### State Persistence
-
-**Client-Side Storage**: localStorage for saving/loading projects as JSON. Provides offline-first functionality with no server dependency.
-
-**Database Schema**: Drizzle ORM schema defined for potential PostgreSQL backend (currently unused, but infrastructure in place).
+- **Client-Side**: `localStorage` for project saving/loading (JSON).
+- **Database**: Drizzle ORM schema is prepared for a PostgreSQL backend.
 
 ### Timing Architecture
-
-**AudioWorklet Processor** (`audio-clock-processor.js`):
-- Runs on audio thread for deterministic timing
-- Calculates samples per tick based on tempo and sample rate
-- Emits tick, beat, and bar events to main thread
-- Handles metronome click generation
-- Provides count-in functionality
-
-**Fallback Timing**: JavaScript setInterval-based timing when AudioWorklet unavailable (browsers without support).
+- **AudioWorklet Processor**: `audio-clock-processor.js` runs on an audio thread for precise timing, emitting tick/beat/bar events and handling metronome clicks.
+- **Fallback Timing**: `setInterval` if AudioWorklet is unavailable.
 
 ### Component Architecture
-
-Custom hardware-themed components:
-- `HardwareButton`: Simulated physical buttons with LED indicators
-- `LCDDisplay`: Green phosphor LCD with main/sub text
-- `LED`: Status indicators (red/green/amber/orange)
-- `TrackButton`: 16 track selection buttons with state indicators
-- `TransportControls`: Play, stop, record, rewind, forward
-- `ControlGrid`: Function buttons (quantize, length, part, etc.)
-- `NumPad`: Numeric input buttons
-- `MIDIDeviceSelect`: MIDI device selection dropdowns
-- `PianoRoll`: Professional piano roll editor based on working canvas demo
-- `PianoRollDialog`: Modal wrapper for piano roll editor
+Custom hardware-themed React components: `HardwareButton`, `LCDDisplay`, `LED`, `TrackButton`, `TransportControls`, `ControlGrid`, `NumPad`, `MIDIDeviceSelect`, `PianoRoll`, `PianoRollDialog`.
 
 ### Threading Model
+- **Main Thread**: UI, user interaction, project state.
+- **Audio Thread**: AudioWorklet for timing.
+- **Message Passing**: `PostMessage` between threads.
 
-1. **Main Thread**: UI rendering, user interactions, project state management
-2. **Audio Thread**: AudioWorklet processor for precise timing
-3. **Message Passing**: PostMessage between main and audio threads
-
-### Performance Considerations
-
-- AudioWorklet prioritized for timing precision (sub-2ms jitter target)
-- Minimal React re-renders through careful state management
-- MIDI events scheduled with precise timestamps
-- Efficient event lookup using Map data structures
+### Performance
+- AudioWorklet for timing precision.
+- Minimal React re-renders.
+- Efficient MIDI event scheduling and lookup.
 
 ### Browser Compatibility
+Targets Chromium, Edge, Safari; requires Web MIDI API, Web Audio API, and `localStorage`.
 
-Target browsers: Chromium, Edge, Safari
-Required APIs:
-- Web MIDI API
-- Web Audio API (AudioContext, AudioWorklet)
-- localStorage
-- ES6+ JavaScript features
+### Piano Roll Editor
+- **Features**: Canvas-based rendering with a three-layer canvas architecture (Grid, Piano, Overlay).
+- **Functionality**: Tools (Select, Draw, Erase), configurable snap grid, zoom, note editing (draw, move, resize), multi-selection, quantize, delete, keyboard navigation.
+- **Live MIDI Visualization**: Real-time display of incoming MIDI notes and active playback notes.
+- **Recording Integration**: Throttled updates during recording, combining committed track events with live buffer for seamless display.
+- **Playback Integration**: Visual playhead syncs with sequencer playback.
+
+### Song Mode
+- **Purpose**: Step-based sequencing, controlling part order, repeats, and per-step overrides.
+- **Data Model**:
+    - **Song**: Container with tempo, ordered `SongStep` array, loop settings.
+    - **SongStep**: References `partId`, `repeats`, optional `trackMask` (mute overrides), optional `transpose`.
+- **`SongPlayer` Class**: Manages song playback, step progression, and applies step-scoped overrides to the `SequencerEngine`.
+- **UI Components**: `SongModeDialog`, `SongEditor` (step list, chain overview).
+- **Playback**: All 16 tracks play, filtered by step masks; step-scoped overrides apply per step; loop functionality.
 
 ## External Dependencies
 
 ### UI & Styling
-- **Tailwind CSS**: Utility-first CSS framework for styling
-- **Radix UI**: Unstyled, accessible UI primitives (@radix-ui/react-*)
-- **shadcn/ui**: Pre-built component system using Radix + Tailwind
-- **Lucide React**: Icon library for UI elements
-- **class-variance-authority**: Component variant management
-- **Google Fonts**: Inter and Orbitron fonts for LCD display
+- **Tailwind CSS**: Utility-first CSS.
+- **Radix UI**: Accessible UI primitives.
+- **shadcn/ui**: Component system using Radix + Tailwind.
+- **Lucide React**: Icon library.
+- **Google Fonts**: Inter, Orbitron.
 
 ### React Ecosystem
-- **React 18**: UI framework
-- **React DOM**: Browser rendering
-- **Wouter**: Lightweight routing library
-- **TanStack React Query**: Data fetching and caching (minimal usage)
-- **React Hook Form**: Form state management (@hookform/resolvers)
+- **React 18**: UI framework.
+- **Wouter**: Lightweight routing.
+- **TanStack React Query**: Data fetching (minimal).
+- **React Hook Form**: Form management.
 
 ### Build Tools
-- **Vite**: Development server and build tool
-- **TypeScript**: Type safety and developer experience
-- **esbuild**: Fast JavaScript bundler
-- **PostCSS**: CSS processing with Autoprefixer
+- **Vite**: Development and build tool.
+- **TypeScript**: Type safety.
+- **esbuild**: Fast JavaScript bundler.
+- **PostCSS**: CSS processing.
 
 ### Database (Infrastructure Ready)
-- **Drizzle ORM**: TypeScript ORM for SQL databases
-- **Drizzle Kit**: Schema migrations and management
-- **@neondatabase/serverless**: PostgreSQL driver for serverless environments
-- **connect-pg-simple**: PostgreSQL session store (if sessions needed)
+- **Drizzle ORM**: TypeScript ORM.
+- **Drizzle Kit**: Schema management.
+- **@neondatabase/serverless**: PostgreSQL driver.
 
 ### Validation & Type Safety
-- **Zod**: Schema validation library
-- **drizzle-zod**: Drizzle schema to Zod validation
+- **Zod**: Schema validation.
+- **drizzle-zod**: Drizzle to Zod validation.
 
 ### Utilities
-- **date-fns**: Date manipulation utilities
-- **clsx & tailwind-merge**: Conditional className utilities
-- **nanoid**: Unique ID generation
-
-### Development
-- **@replit/vite-plugin-***: Replit-specific development tooling
-- **tsx**: TypeScript execution for Node.js scripts
+- **date-fns**: Date manipulation.
+- **clsx & tailwind-merge**: Conditional class utilities.
+- **nanoid**: Unique ID generation.
 
 ### Web APIs (Browser Native)
-- **Web MIDI API**: MIDI device access and communication
-- **Web Audio API**: Audio context and AudioWorklet for timing
-- **localStorage**: Client-side persistence
-- **IndexedDB**: Potential future use for larger datasets
-
-## Piano Roll Editor
-
-### Implementation
-
-The piano roll editor is a fully functional note editor with canvas-based rendering, based on a working HTML demo. It features:
-
-**Three-Layer Canvas Architecture**:
-- **Grid Canvas**: Background grid, bar lines, beat divisions, and row coloring
-- **Piano Canvas**: Piano keyboard overlay with note labels
-- **Overlay Canvas**: Interactive note editing and visual feedback
-
-**Core Features**:
-- **Tools**: Select (V), Draw (B), Erase (E) with keyboard shortcuts
-- **Snap Grid**: Configurable snap from 1/2 to 1/48 notes
-- **Zoom Controls**: Horizontal (bars visible) and vertical (keys visible) zoom
-- **Note Editing**: Draw, select, move, resize notes with mouse
-- **Multi-selection**: Shift-click to add/remove notes from selection
-- **Edge Dragging**: Click and drag note edges to adjust duration
-- **Quantize**: Snap selected notes to grid (Q key)
-- **Delete**: Remove selected notes (Backspace/Delete)
-- **Keyboard Navigation**: Arrow keys to move/transpose, with Shift modifier
-- **Alt Key**: Hold Alt to disable snap during operations
-- **Mouse Wheel**: Vertical scroll, Alt+Wheel for horizontal, Shift+Wheel for zoom
-
-**Live MIDI Visualization**:
-- Incoming MIDI notes are visualized in real-time on the piano roll
-- Active notes shown with pulsing green indicators at playback position
-- Separate from recorded notes for clear visual distinction
-- Updates automatically as MIDI input is received
-
-**Note Pairing Algorithm**:
-- FIFO (first-in-first-out) queue-based pairing for accurate note durations
-- Handles sequential notes of same pitch correctly
-- Handles overlapping notes of same pitch correctly
-- Stable sort ensures note-offs processed before note-ons at same timestamp
-
-**Live Recording Updates**:
-- Event emission system with `recordBufferUpdate` and `takeCommitted` events
-- Throttled updates every 50ms during recording (max 20 updates/sec)
-- FIFO-based range calculation captures correct note-on timestamps for overlapping notes
-- Uses `noteOffToPairedNoteOn` map to preserve paired note-on events during stack operations
-- Piano roll subscribes to events and updates only when changed range intersects viewport
-- Combines committed track events with live recording buffer for seamless display
-- Incremental spatial index updates for efficient rendering
-
-**Playback Integration**:
-- Visual playhead shows current playback position
-- 50ms polling interval for smooth position tracking
-- Notes sync with sequencer engine playback
-
-**Colors & Styling** (matching demo):
-- Background: `#2a2d31`
-- Grid lines: `#3a3e44` (bars), `#2e3237` (beats)
-- Notes (unselected): `#76d275` (green)
-- Notes (selected): `#ffcc66` (amber/yellow)
-- Live MIDI notes: Pulsing green with transparency
-- Note edge handle: `#0e0f11` (dark)
-- Hover outline: Semi-transparent white
-- Playhead: `#9bf26b` (bright green)
-
-## Song Mode
-
-### Architecture
-
-Song mode provides step-based sequencing with explicit control over part order, repeats, and per-step overrides.
-
-**Data Model**:
-- **Song**: Named container with tempo, ordered steps array, loop settings (loopEnabled, loopStart, loopEnd)
-- **SongStep**: Individual step with partId (reference to Part), repeats (1-99), optional trackMask (bit flags for mute overrides), optional transpose (-12 to +12)
-- **StepRuntime**: Playback state tracking current step index and repeat pass
-
-**SongPlayer Class** (`client/src/lib/song-player.ts`):
-- Manages song playback state and step progression
-- `play(songId)`: Loads song from project and starts playback with all 16 tracks
-- `stop()`: Resets song state and clears overrides
-- `onPartBoundary()`: Advances to next repeat or next step when part completes
-- Applies step-scoped overrides (transpose, trackMask) to sequencer engine
-- Tracks current step runtime (idx, pass) for repeat handling
-- Emits state changes to listeners for UI updates
-
-**SequencerEngine Integration**:
-- `queueNextPart(partId)`: Schedules part change at next measure boundary
-- `setStepTrackMask(mask)`: Applies step-scoped track mute overrides
-- `setStepTranspose(semitones)`: Applies step-scoped transpose
-- Part boundary listener system triggers song step advancement
-- Mask precedence: live mutes > step mask > part mutes
-
-**UI Components**:
-- **SongModeDialog** (`client/src/components/SongModeDialog.tsx`): Modal dialog with song list and editor
-- **SongEditor** (`client/src/components/SongEditor.tsx`): Step list table with columns for Part, Repeats, Mask, Transpose, plus chain overview timeline
-- Song creation, editing, deletion, and "Set as Current Song" functionality
-- Drag-and-drop step reordering
-- Visual indicators for current step and loop ranges
-
-**State Management**:
-- Full project stored in React state in Home component
-- Song updates flow: SongEditor → SongModeDialog → Home component → sequencerEngine
-- Project state updates trigger re-renders for immediate UI feedback
-- Transport controls check currentSong state to determine playback mode
-
-**Playback Behavior**:
-- In song mode, all 16 tracks are potentially playing (filtered by step masks)
-- Each step plays its referenced part with specified number of repeats
-- Step-scoped overrides (transpose, trackMask) apply during step playback only
-- Part boundaries trigger step advancement via callback system
-- Loop-enabled songs repeat between loopStart and loopEnd step indices
-- Song end stops transport unless loop is enabled
-
-**ID Generation**:
-- Song IDs: `sng_` prefix with nanoid (e.g., `sng_abc123`)
-- Step IDs: `sst_` prefix with nanoid (e.g., `sst_xyz789`)
-- Utility functions in `shared/id-utils.ts`
+- **Web MIDI API**: MIDI device access.
+- **Web Audio API**: Audio context, AudioWorklet.
+- **localStorage**: Client-side persistence.
