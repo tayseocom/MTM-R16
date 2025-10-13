@@ -47,6 +47,13 @@ Preferred communication style: Simple, everyday language.
 ### Component Architecture
 Custom hardware-themed React components: `HardwareButton`, `LCDDisplay`, `LED`, `TrackButton`, `TransportControls`, `ControlGrid`, `NumPad`, `MIDIDeviceSelect`, `PianoRoll`, `PianoRollDialog`.
 
+**Track Playback Progress Indicator**: Each TrackButton displays a visual progress bar during playback:
+- **Visual**: Semi-transparent green bar at the bottom of track button
+- **Behavior**: Animates from 0% to 100% width as track plays through its loop
+- **Calculation**: Progress = (currentTick % totalTicks) / totalTicks, updated every 50ms
+- **Display**: Only visible when track is actively playing; automatically resets to 0 when stopped
+- **Sync**: All tracks show synchronized progress as they loop together
+
 ### Threading Model
 - **Main Thread**: UI, user interaction, project state.
 - **Audio Thread**: AudioWorklet for timing.
