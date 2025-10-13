@@ -6,6 +6,7 @@ import { metronome } from './metronome';
 type RecordBufferUpdateListener = (trackId: number, data: { added: MIDIEvent[], changedRange: { t0: number, t1: number } }) => void;
 type TakeCommittedListener = (trackId: number, data: { ranges: Array<{ t0: number, t1: number }> }) => void;
 type PartBoundaryListener = () => void;
+type MIDIInputListener = (event: MIDIMessageEvent) => void;
 
 export class SequencerEngine {
   private project: Project;
@@ -23,6 +24,7 @@ export class SequencerEngine {
   private recordBufferUpdateListeners: RecordBufferUpdateListener[] = [];
   private takeCommittedListeners: TakeCommittedListener[] = [];
   private partBoundaryListeners: PartBoundaryListener[] = [];
+  private midiInputListeners: MIDIInputListener[] = [];
   private lastEmitTime = 0;
   private emitThrottleMs = 50; // 50ms = ~20 updates per second
   private pendingEventsByTrack: Map<number, MIDIEvent[]> = new Map();
@@ -83,6 +85,14 @@ export class SequencerEngine {
     const clockReady = await audioClock.initialize();
     const midiReady = await midiManager.initialize();
     await metronome.initialize();
+    
+    // Set up MIDI input listener once - it will handle both recording and forwarding to subscribers
+    midiManager.setInputListener((event) => {
+      this.handleMIDIInput(event);
+      // Forward to all MIDI input subscribers (e.g., for live notes visualization)
+      this.midiInputListeners.forEach(listener => listener(event));
+    });
+    
     return clockReady && midiReady;
   }
 
@@ -97,6 +107,13 @@ export class SequencerEngine {
     this.takeCommittedListeners.push(listener);
     return () => {
       this.takeCommittedListeners = this.takeCommittedListeners.filter(l => l !== listener);
+    };
+  }
+
+  onMIDIInput(listener: MIDIInputListener) {
+    this.midiInputListeners.push(listener);
+    return () => {
+      this.midiInputListeners = this.midiInputListeners.filter(l => l !== listener);
     };
   }
 
@@ -160,9 +177,8 @@ export class SequencerEngine {
     this.pendingEventsByTrack.clear();
     this.lastEmitTime = 0;
 
-    midiManager.setInputListener((event) => {
-      this.handleMIDIInput(event);
-    });
+    // MIDI input listener is now set up once during initialization
+    // No need to set it again here
 
     audioClock.setMetronome(true);
     audioClock.start();
@@ -180,6 +196,11 @@ export class SequencerEngine {
       this.selectedOutput.send(new Uint8Array(data));
     } else if (this.midiThruEnabled && this.selectedOutput && data.length > 0) {
       console.log('[MIDI THRU] BLOCKED (stopped):', data);
+    }
+    
+    // Only process recording when actually recording
+    if (!this.isRecording) {
+      return;
     }
     
     const timestamp = audioClock.getCurrentTime() - this.recordStartTime;

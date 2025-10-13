@@ -46,31 +46,31 @@ export default function Home() {
       updateDevices();
       setTempo(sequencerEngine.getProject().tempo);
       sequencerEngine.setMetronome(metroEnabled);
+    });
 
-      // Set up MIDI input listener for live notes visualization
-      midiManager.setInputListener((event) => {
-        if (!event.data) return;
-        const status = event.data[0];
-        const note = event.data[1];
-        const velocity = event.data[2];
-        const command = status & 0xF0;
+    // Set up MIDI input listener for live notes visualization
+    const unsubscribeMidi = sequencerEngine.onMIDIInput((event) => {
+      if (!event.data) return;
+      const status = event.data[0];
+      const note = event.data[1];
+      const velocity = event.data[2];
+      const command = status & 0xF0;
 
-        if (command === 0x90 && velocity > 0) {
-          // Note On
-          setLiveNotes(prev => {
-            const next = new Map(prev);
-            next.set(note, { velocity, timestamp: Date.now() });
-            return next;
-          });
-        } else if (command === 0x80 || (command === 0x90 && velocity === 0)) {
-          // Note Off
-          setLiveNotes(prev => {
-            const next = new Map(prev);
-            next.delete(note);
-            return next;
-          });
-        }
-      });
+      if (command === 0x90 && velocity > 0) {
+        // Note On
+        setLiveNotes(prev => {
+          const next = new Map(prev);
+          next.set(note, { velocity, timestamp: Date.now() });
+          return next;
+        });
+      } else if (command === 0x80 || (command === 0x90 && velocity === 0)) {
+        // Note Off
+        setLiveNotes(prev => {
+          const next = new Map(prev);
+          next.delete(note);
+          return next;
+        });
+      }
     });
 
     // Load from localStorage on mount
@@ -101,6 +101,7 @@ export default function Home() {
     return () => {
       clearInterval(positionInterval);
       unsubscribe();
+      unsubscribeMidi();
     };
   }, []);
 
