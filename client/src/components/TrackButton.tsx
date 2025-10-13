@@ -7,7 +7,7 @@ interface TrackButtonProps {
   armed?: boolean;
   playing?: boolean;
   muted?: boolean;
-  onClick?: () => void;
+  onClick?: (e: React.MouseEvent) => void;
 }
 
 export default function TrackButton({ 

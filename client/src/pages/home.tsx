@@ -20,6 +20,7 @@ export default function Home() {
   const [transportState, setTransportState] = useState<TransportState>('stopped');
   const [editMode, setEditMode] = useState<EditMode>('none');
   const [selectedTracks, setSelectedTracks] = useState<number[]>([1]);
+  const [primaryTrack, setPrimaryTrack] = useState<number>(1); // Last clicked track for recording
   const [armedTracks, setArmedTracks] = useState<number[]>([]);
   const [playingTracks, setPlayingTracks] = useState<number[]>([]);
   const [mutedTracks, setMutedTracks] = useState<number[]>([]);
@@ -187,26 +188,50 @@ export default function Home() {
       // Save to localStorage after recording
       saveToLocalStorage();
     } else if (transportState === 'playing') {
-      // Punch-in: start recording on selected tracks while continuing playback
-      sequencerEngine.startRecording(selectedTracks, true);
+      // Punch-in: record to primary track only, all selected tracks continue playing
+      sequencerEngine.startRecording([primaryTrack], true);
       setTransportState('recording');
-      setArmedTracks([...selectedTracks]);
+      setArmedTracks([primaryTrack]);
     } else {
-      // Fresh recording: count-in then start from beginning
+      // Fresh recording: count-in then record to primary track, all selected tracks play
       setTransportState('countIn');
-      setArmedTracks([...selectedTracks]);
+      setArmedTracks([primaryTrack]);
       setTimeout(() => {
-        sequencerEngine.startRecording(selectedTracks, false);
+        sequencerEngine.startRecording([primaryTrack], false);
         setTransportState('recording');
       }, 2000);
     }
   };
 
-  const handleTrackClick = (trackNum: number) => {
+  const handleTrackClick = (trackNum: number, shiftKey: boolean = false) => {
     if (editMode === 'merge' || editMode === 'copy') {
       handleTrackClickInEditMode(trackNum);
     } else {
-      setSelectedTracks([trackNum]);
+      if (shiftKey) {
+        // Multi-select: toggle track in selection
+        setSelectedTracks(prev => {
+          if (prev.includes(trackNum)) {
+            // Removing track: prevent removing the last track
+            if (prev.length === 1) {
+              return prev; // Keep at least one track selected
+            }
+            const newSelection = prev.filter(t => t !== trackNum);
+            // Update primary track if we're removing it
+            if (primaryTrack === trackNum) {
+              setPrimaryTrack(newSelection[0]); // Set to first remaining track
+            }
+            return newSelection;
+          } else {
+            // Adding track: set as new primary
+            setPrimaryTrack(trackNum);
+            return [...prev, trackNum].sort((a, b) => a - b);
+          }
+        });
+      } else {
+        // Single select: replace selection and set as primary
+        setPrimaryTrack(trackNum);
+        setSelectedTracks([trackNum]);
+      }
     }
   };
 
@@ -539,7 +564,7 @@ export default function Home() {
                   armed={armedTracks.includes(num)}
                   playing={playingTracks.includes(num)}
                   muted={mutedTracks.includes(num)}
-                  onClick={() => handleTrackClick(num)}
+                  onClick={(e) => handleTrackClick(num, e.shiftKey)}
                 />
               ))}
             </div>
@@ -552,7 +577,7 @@ export default function Home() {
                   armed={armedTracks.includes(num)}
                   playing={playingTracks.includes(num)}
                   muted={mutedTracks.includes(num)}
-                  onClick={() => handleTrackClick(num)}
+                  onClick={(e) => handleTrackClick(num, e.shiftKey)}
                 />
               ))}
             </div>
