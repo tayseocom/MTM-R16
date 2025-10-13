@@ -65,6 +65,8 @@ Preferred communication style: Simple, everyday language.
 
 **Part Length Management**: Each part has an adjustable length (1-64 bars, default 4 bars). Users set part length via the LENGTH button which displays a prompt dialog. The length determines how many bars the part plays/records before looping. Part length is validated, persisted to localStorage, and immediately reflected in playback/recording behavior.
 
+**MIDI Channel Per Track**: Each track is assigned a fixed MIDI channel (Track 1 → MIDI CH 1, Track 2 → MIDI CH 2, etc.), following the Alesis MMT-8 behavior. During playback, events are sent on the track's assigned MIDI channel regardless of the recorded channel, enabling multi-synth setups and multi-timbral device control. Track buttons display both track number and MIDI channel assignment (e.g., "TRACK 1 / CH 1"). The channel override occurs in `schedulePlaybackEvents()` where events are cloned with the track's channel before scheduling.
+
 ### State Persistence
 
 **Client-Side Storage**: localStorage for saving/loading projects as JSON. Provides offline-first functionality with no server dependency.
