@@ -6,24 +6,20 @@ interface PianoRollDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   trackNumber: number;
-  trackName: string;
   events: MIDIEvent[];
   onEventsChange: (events: MIDIEvent[]) => void;
   currentPosition?: number;
   liveNotes?: Map<number, { velocity: number; timestamp: number }>;
-  partLength: number;
 }
 
 export default function PianoRollDialog({
   open,
   onOpenChange,
   trackNumber,
-  trackName,
   events,
   onEventsChange,
   currentPosition,
-  liveNotes,
-  partLength
+  liveNotes
 }: PianoRollDialogProps) {
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -36,12 +32,10 @@ export default function PianoRollDialog({
         <div className="flex-1 overflow-hidden">
           <PianoRoll 
             trackId={trackNumber}
-            trackName={trackName}
             events={events}
             onEventsChange={onEventsChange}
             currentPosition={currentPosition}
             liveNotes={liveNotes}
-            partLength={partLength}
           />
         </div>
       </DialogContent>

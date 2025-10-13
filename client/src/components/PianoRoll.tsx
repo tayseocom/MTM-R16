@@ -18,12 +18,10 @@ interface PianoNote {
 
 interface PianoRollProps {
   trackId: number;
-  trackName: string;
   events: MIDIEvent[];
   onEventsChange: (events: MIDIEvent[]) => void;
   currentPosition?: number;
   liveNotes?: Map<number, { velocity: number; timestamp: number }>;
-  partLength: number;
 }
 
 type Tool = 'select' | 'draw' | 'erase';
@@ -38,7 +36,7 @@ interface DragState {
   startSelSnapshot?: Record<string, { t: number; nn: number }>;
 }
 
-export default function PianoRoll({ trackId, trackName, events, onEventsChange, currentPosition = 0, liveNotes, partLength }: PianoRollProps) {
+export default function PianoRoll({ trackId, events, onEventsChange, currentPosition = 0, liveNotes }: PianoRollProps) {
   const gridRef = useRef<HTMLCanvasElement>(null);
   const pianoRef = useRef<HTMLCanvasElement>(null);
   const overlayRef = useRef<HTMLCanvasElement>(null);
@@ -47,7 +45,7 @@ export default function PianoRoll({ trackId, trackName, events, onEventsChange, 
 
   const [tool, setTool] = useState<Tool>('select');
   const [snapDiv, setSnapDiv] = useState(6); // 1/16
-  const [barsVisible, setBarsVisible] = useState(partLength);
+  const [barsVisible, setBarsVisible] = useState(16);
   const [keysVisible, setKeysVisible] = useState(24);
   const [scrollTicks, setScrollTicks] = useState(0);
   const [scrollKey, setScrollKey] = useState(48);
@@ -58,11 +56,6 @@ export default function PianoRoll({ trackId, trackName, events, onEventsChange, 
   const [isMouseDown, setIsMouseDown] = useState(false);
 
   const dpr = window.devicePixelRatio || 1;
-
-  // Update barsVisible when partLength changes
-  useEffect(() => {
-    setBarsVisible(partLength);
-  }, [partLength]);
 
   // Convert MIDI events to notes
   useEffect(() => {
@@ -263,84 +256,45 @@ export default function PianoRoll({ trackId, trackName, events, onEventsChange, 
     ctx.save();
     ctx.clearRect(0, 0, gridRef.current.width, gridRef.current.height);
 
-    const TIMELINE_HEIGHT = 24 * dpr;
-    
-    // Fill background
     ctx.fillStyle = '#2a2d31';
     ctx.fillRect(0, 0, gridRef.current.width, gridRef.current.height);
-
-    // Fill timeline strip with slightly darker background
-    ctx.fillStyle = '#1e2024';
-    ctx.fillRect(PIANO_WIDTH * dpr, 0, gridRef.current.width - PIANO_WIDTH * dpr, TIMELINE_HEIGHT);
 
     const pxPerBar = barsToPx();
     const startBar = Math.floor(scrollTicks / TICKS_PER_BAR);
     const endBar = startBar + barsVisible + 1;
 
-    // Draw key backgrounds FIRST (below timeline strip)
-    const kh = keyHeight();
-    for (let i = 0; i < keysVisible; i++) {
-      const nn = scrollKey + i;
-      const y = Math.round(gridRef.current.height - (i + 1) * kh);
-      ctx.fillStyle = isBlack(nn) ? '#272a2f' : '#2f3339';
-      ctx.fillRect(PIANO_WIDTH * dpr, Math.max(y, TIMELINE_HEIGHT), gridRef.current.width - PIANO_WIDTH * dpr, kh);
-    }
-
-    // Draw bar lines and beat divisions
     for (let bar = startBar; bar <= endBar; bar++) {
       const x = Math.round(PIANO_WIDTH * dpr + (bar - startBar) * pxPerBar);
-      const isWithinPart = bar < partLength;
-      const isPartBoundary = bar === partLength;
       
-      // Draw bar line
-      if (isPartBoundary) {
-        ctx.strokeStyle = '#f59e0b';
-        ctx.lineWidth = 3 * dpr;
-      } else if (isWithinPart) {
-        ctx.strokeStyle = '#10b981';
-        ctx.lineWidth = 2 * dpr;
-      } else {
-        ctx.strokeStyle = '#374151';
-        ctx.lineWidth = 1 * dpr;
-      }
-      
+      ctx.strokeStyle = '#3a3e44';
+      ctx.lineWidth = 1 * dpr;
       ctx.beginPath();
       ctx.moveTo(x, 0);
       ctx.lineTo(x, gridRef.current.height);
       ctx.stroke();
 
-      // Draw beat divisions
       for (let beat = 1; beat < BEATS_PER_BAR; beat++) {
         const xb = Math.round(x + beat * (pxPerBar / BEATS_PER_BAR));
-        ctx.strokeStyle = isWithinPart ? '#4b5563' : '#2e3237';
-        ctx.lineWidth = 1 * dpr;
+        ctx.strokeStyle = '#2e3237';
         ctx.beginPath();
         ctx.moveTo(xb, 0);
         ctx.lineTo(xb, gridRef.current.height);
         ctx.stroke();
       }
+
+      ctx.fillStyle = '#9aa1aa';
+      ctx.font = `${12 * dpr}px monospace`;
+      ctx.textAlign = 'left';
+      ctx.textBaseline = 'top';
+      ctx.fillText(String(bar + 1), x + 4 * dpr, 4 * dpr);
     }
 
-    // Draw timeline labels LAST (so they appear on top)
-    ctx.font = `${12 * dpr}px monospace`;
-    ctx.textBaseline = 'middle';
-    
-    for (let bar = startBar; bar <= endBar; bar++) {
-      const x = Math.round(PIANO_WIDTH * dpr + (bar - startBar) * pxPerBar);
-      const isWithinPart = bar < partLength;
-      
-      // Draw bar number
-      ctx.fillStyle = isWithinPart ? '#e5e7eb' : '#9ca3af';
-      ctx.textAlign = 'left';
-      ctx.fillText(String(bar + 1), x + 4 * dpr, TIMELINE_HEIGHT / 2);
-      
-      // Draw beat subdivision labels (1.3, 2.3, etc.)
-      for (let beat = 1; beat < BEATS_PER_BAR; beat++) {
-        const xb = Math.round(x + beat * (pxPerBar / BEATS_PER_BAR));
-        ctx.fillStyle = isWithinPart ? '#9ca3af' : '#6b7280';
-        ctx.textAlign = 'center';
-        ctx.fillText(`${bar + 1}.${beat}`, xb, TIMELINE_HEIGHT / 2);
-      }
+    const kh = keyHeight();
+    for (let i = 0; i < keysVisible; i++) {
+      const nn = scrollKey + i;
+      const y = Math.round(gridRef.current.height - (i + 1) * kh);
+      ctx.fillStyle = isBlack(nn) ? '#272a2f' : '#2f3339';
+      ctx.fillRect(PIANO_WIDTH * dpr, y, gridRef.current.width - PIANO_WIDTH * dpr, kh);
     }
 
     ctx.restore();
@@ -641,24 +595,25 @@ export default function PianoRoll({ trackId, trackName, events, onEventsChange, 
       if (e.key === 'e' || e.key === 'E') setTool('erase');
       
       if (e.key === 'Backspace' || e.key === 'Delete') {
-        const updated = notes.filter(n => !selection.has(n.id));
-        setNotes(updated);
+        setNotes(prev => prev.filter(n => !selection.has(n.id)));
         setSelection(new Set());
-        onEventsChange(notesToEvents(updated));
+        onEventsChange(notesToEvents(notes.filter(n => !selection.has(n.id))));
       }
       
       if (e.key === 'q' || e.key === 'Q') {
-        const updated = [...notes];
-        for (const id of Array.from(selection)) {
-          const n = updated.find(m => m.id === id);
-          if (n) {
-            n.t = snapTicks(n.t);
-            const end = snapTicks(n.t + n.dur);
-            n.dur = Math.max(2, end - n.t);
+        setNotes(prev => {
+          const updated = [...prev];
+          for (const id of Array.from(selection)) {
+            const n = updated.find(m => m.id === id);
+            if (n) {
+              n.t = snapTicks(n.t);
+              const end = snapTicks(n.t + n.dur);
+              n.dur = Math.max(2, end - n.t);
+            }
           }
-        }
-        setNotes(updated);
-        onEventsChange(notesToEvents(updated));
+          return updated;
+        });
+        onEventsChange(notesToEvents(notes));
       }
       
       if (e.key === 'ArrowUp' || e.key === 'ArrowDown') {
@@ -692,42 +647,31 @@ export default function PianoRoll({ trackId, trackName, events, onEventsChange, 
   }, [selection, snapDiv, notes]);
 
   const handleQuantize = () => {
-    const updated = [...notes];
-    for (const id of Array.from(selection)) {
-      const n = updated.find(m => m.id === id);
-      if (n) {
-        n.t = snapTicks(n.t);
-        const end = snapTicks(n.t + n.dur);
-        n.dur = Math.max(2, end - n.t);
+    setNotes(prev => {
+      const updated = [...prev];
+      for (const id of Array.from(selection)) {
+        const n = updated.find(m => m.id === id);
+        if (n) {
+          n.t = snapTicks(n.t);
+          const end = snapTicks(n.t + n.dur);
+          n.dur = Math.max(2, end - n.t);
+        }
       }
-    }
-    setNotes(updated);
-    onEventsChange(notesToEvents(updated));
+      return updated;
+    });
+    onEventsChange(notesToEvents(notes));
   };
 
   const handleDelete = () => {
-    const updated = notes.filter(n => !selection.has(n.id));
-    setNotes(updated);
+    setNotes(prev => prev.filter(n => !selection.has(n.id)));
     setSelection(new Set());
-    onEventsChange(notesToEvents(updated));
+    onEventsChange(notesToEvents(notes.filter(n => !selection.has(n.id))));
   };
 
   return (
     <div className="flex flex-col h-full bg-[#1b1c1f]">
-      <div className="flex flex-col sticky top-0 z-10">
-        <div className="flex gap-2 items-center px-3 py-2 bg-[#1e2024] border-b border-black/30">
-          <button className="px-4 py-1.5 rounded-t-md bg-primary/20 border-b-2 border-primary text-primary text-sm font-medium" data-testid="tab-piano-roll">
-            Piano Roll
-          </button>
-          <button className="px-4 py-1.5 rounded-t-md text-[#6b7280] text-sm font-medium hover-elevate" data-testid="tab-score">
-            Score
-          </button>
-        </div>
-        <div className="flex gap-3 items-center px-3 py-2 bg-[#2a2d31] border-b border-black/50">
-          <div className="flex gap-2 items-center">
-            <div className="inline-flex items-center px-3 py-1 rounded-md bg-primary/20 border border-primary/40 text-primary text-sm font-medium" data-testid="track-name-badge">
-              {trackName}
-            </div>
+      <div className="flex gap-3 items-center px-3 py-2 bg-[#2a2d31] border-b border-black/50 sticky top-0 z-10">
+        <div className="flex gap-2 items-center">
           <label className="text-sm text-[#dfe3e8]">
             Tool
             <select
@@ -801,10 +745,9 @@ export default function PianoRoll({ trackId, trackName, events, onEventsChange, 
           >
             Delete
           </button>
-          </div>
-          <div className="ml-auto text-xs text-[#9aa1aa]">
-            Drag to move • Edge-drag to trim • Alt = no snap • Alt+Wheel = horizontal scroll • Shift+Wheel = zoom X
-          </div>
+        </div>
+        <div className="ml-auto text-xs text-[#9aa1aa]">
+          Drag to move • Edge-drag to trim • Alt = no snap • Alt+Wheel = horizontal scroll • Shift+Wheel = zoom X
         </div>
       </div>
 

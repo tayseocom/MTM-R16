@@ -173,24 +173,6 @@ export default function Home() {
     setArmedTracks([]);
   };
 
-  const handleRewind = () => {
-    const newPart = currentPart === 1 ? 9 : currentPart - 1;
-    sequencerEngine.ensurePartExists(newPart - 1);
-    sequencerEngine.getProject().currentPart = newPart - 1;
-    setProject(structuredClone(sequencerEngine.getProject()));
-    setCurrentPart(newPart);
-    saveToLocalStorage();
-  };
-
-  const handleForward = () => {
-    const newPart = currentPart === 9 ? 1 : currentPart + 1;
-    sequencerEngine.ensurePartExists(newPart - 1);
-    sequencerEngine.getProject().currentPart = newPart - 1;
-    setProject(structuredClone(sequencerEngine.getProject()));
-    setCurrentPart(newPart);
-    saveToLocalStorage();
-  };
-
   const handleRecord = () => {
     if (!midiReady) {
       alert('Web MIDI not available. Please open in Chrome/Edge with MIDI devices connected.');
@@ -389,17 +371,13 @@ export default function Home() {
     }
   };
 
-  const getCurrentTrack = () => {
+  const getCurrentTrackEvents = (): MIDIEvent[] => {
     if (selectedTracks.length > 0) {
       const part = sequencerEngine.getCurrentPart();
-      return part.tracks.find(t => t.id === selectedTracks[0]);
+      const track = part.tracks.find(t => t.id === selectedTracks[0]);
+      return track?.events || [];
     }
-    return undefined;
-  };
-
-  const getCurrentTrackEvents = (): MIDIEvent[] => {
-    const track = getCurrentTrack();
-    return track?.events || [];
+    return [];
   };
 
   const handleSaveProject = () => {
@@ -538,8 +516,8 @@ export default function Home() {
               onPlay={handlePlay}
               onStop={handleStop}
               onRecord={handleRecord}
-              onRewind={handleRewind}
-              onForward={handleForward}
+              onRewind={() => console.log('Rewind')}
+              onForward={() => console.log('Forward')}
             />
           </div>
 
@@ -625,12 +603,10 @@ export default function Home() {
         open={pianoRollOpen}
         onOpenChange={setPianoRollOpen}
         trackNumber={selectedTracks[0] || 1}
-        trackName={getCurrentTrack()?.name || `Track ${selectedTracks[0] || 1}`}
         events={getCurrentTrackEvents()}
         onEventsChange={handlePianoRollEventsChange}
         currentPosition={currentPosition}
         liveNotes={liveNotes}
-        partLength={sequencerEngine.getCurrentPart().length}
       />
 
       <SongModeDialog
