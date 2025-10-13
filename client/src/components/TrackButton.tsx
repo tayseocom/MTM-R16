@@ -35,17 +35,9 @@ export default function TrackButton({
       data-testid={`track-button-${trackNumber}`}
     >
       <LED color={getLedColor()} pulse={playing} className="absolute top-1 right-1" />
-      <div className="flex flex-col items-center gap-0.5">
-        <span className="text-xs font-bold text-foreground">
-          TRACK {trackNumber}
-        </span>
-        <span 
-          className="text-xs text-muted-foreground" 
-          data-testid={`text-track-channel-${trackNumber}`}
-        >
-          CH {trackNumber}
-        </span>
-      </div>
+      <span className="text-xs font-bold text-foreground">
+        TRACK {trackNumber}
+      </span>
     </button>
   );
 }
