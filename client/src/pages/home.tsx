@@ -233,17 +233,38 @@ export default function Home() {
             if (primaryTrack === trackNum) {
               setPrimaryTrack(newSelection[0]); // Set to first remaining track
             }
+            
+            // If playing, update playing tracks too
+            if (transportState === 'playing' || transportState === 'recording') {
+              setPlayingTracks(newSelection);
+              sequencerEngine.updatePlayingTracks(newSelection);
+            }
+            
             return newSelection;
           } else {
             // Adding track: set as new primary
             setPrimaryTrack(trackNum);
-            return [...prev, trackNum].sort((a, b) => a - b);
+            const newSelection = [...prev, trackNum].sort((a, b) => a - b);
+            
+            // If playing, update playing tracks too
+            if (transportState === 'playing' || transportState === 'recording') {
+              setPlayingTracks(newSelection);
+              sequencerEngine.updatePlayingTracks(newSelection);
+            }
+            
+            return newSelection;
           }
         });
       } else {
         // Single select: replace selection and set as primary
         setPrimaryTrack(trackNum);
         setSelectedTracks([trackNum]);
+        
+        // If playing, update playing tracks too
+        if (transportState === 'playing' || transportState === 'recording') {
+          setPlayingTracks([trackNum]);
+          sequencerEngine.updatePlayingTracks([trackNum]);
+        }
       }
     }
   };

@@ -420,6 +420,14 @@ export class SequencerEngine {
     }
   }
 
+  updatePlayingTracks(trackIds: number[]) {
+    // Update which tracks are playing without restarting playback
+    // Only works if already playing
+    if (this.isPlaying) {
+      this.schedulePlaybackEvents(trackIds);
+    }
+  }
+
   private schedulePlaybackEvents(trackIds?: number[]) {
     const part = this.getCurrentPart();
     const ticksPerBeat = 24;

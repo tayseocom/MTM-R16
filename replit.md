@@ -33,7 +33,7 @@ Preferred communication style: Simple, everyday language.
     - **Track**: Individual MIDI channel with events, name, mute state. Fixed MIDI channel per track (e.g., Track 1 -> CH 1).
     - **MIDI Events**: Timestamped note on/off, CC, program change.
     - **Song**: Ordered sequence of parts with loop points.
-- **Multi-Select Track Workflow**: Supports selecting multiple tracks for playback and overdub recording. The "primary track" (last clicked) is used for recording.
+- **Multi-Select Track Workflow**: Supports selecting multiple tracks for playback and overdub recording. Shift+click to toggle tracks in/out of selection. The "primary track" (last clicked) is used for recording. Shift+clicking tracks during playback dynamically adds/removes them from the playing set in real-time.
 - **Part Length**: Adjustable from 1 to 64 bars.
 
 ### State Persistence
