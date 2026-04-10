@@ -694,6 +694,14 @@ export class SequencerEngine {
     }
   }
 
+  quantizeTrackEvents(trackId: number, quantize: number) {
+    const part = this.getCurrentPart();
+    const track = part.tracks.find(t => t.id === trackId);
+    if (track && track.events.length > 0 && quantize > 0) {
+      track.events = this.quantizeEvents(track.events, quantize);
+    }
+  }
+
   transposeTrack(trackId: number, semitones: number) {
     const part = this.getCurrentPart();
     const track = part.tracks.find(t => t.id === trackId);

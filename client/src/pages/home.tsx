@@ -393,33 +393,60 @@ export default function Home() {
     setEditMode(newMode);
     
     if (newMode === 'erase') {
-      if (confirm('Erase all events from selected tracks?')) {
+      const eraseAll = selectedTracks.length === 0 || selectedTracks.length === 16;
+      const eraseMsg = eraseAll
+        ? 'Erase ALL tracks in this part?'
+        : `Erase events from selected track${selectedTracks.length > 1 ? 's' : ''}?`;
+      if (confirm(eraseMsg)) {
         const part = sequencerEngine.getCurrentPart();
         const partId = part.id;
-        const snapshots = selectedTracks.map(trackId => {
-          const track = part.tracks.find(t => t.id === trackId);
-          return { trackId, eventsBefore: track ? cloneEvents(track.events) : [] };
-        });
-        const trackLabel = selectedTracks.length === 1 ? `TRK ${selectedTracks[0]}` : `${selectedTracks.length} TRKS`;
-        undoManager.executeCommand({
-          label: `ERASE ${trackLabel}`,
-          execute: () => {
-            const p = sequencerEngine.getPartById(partId);
-            if (!p) return;
-            snapshots.forEach(({ trackId }) => {
-              const t = p.tracks.find(tr => tr.id === trackId);
-              if (t) t.events = [];
-            });
-          },
-          undo: () => {
-            const p = sequencerEngine.getPartById(partId);
-            if (!p) return;
-            snapshots.forEach(({ trackId, eventsBefore }) => {
-              const t = p.tracks.find(tr => tr.id === trackId);
-              if (t) t.events = cloneEvents(eventsBefore);
-            });
-          },
-        });
+        if (eraseAll) {
+          const allSnapshots = part.tracks.map(t => ({
+            trackId: t.id,
+            eventsBefore: cloneEvents(t.events),
+          }));
+          undoManager.executeCommand({
+            label: `ERASE PART ${partId}`,
+            execute: () => {
+              const p = sequencerEngine.getPartById(partId);
+              if (!p) return;
+              p.tracks.forEach(t => { t.events = []; });
+            },
+            undo: () => {
+              const p = sequencerEngine.getPartById(partId);
+              if (!p) return;
+              allSnapshots.forEach(({ trackId, eventsBefore }) => {
+                const t = p.tracks.find(tr => tr.id === trackId);
+                if (t) t.events = cloneEvents(eventsBefore);
+              });
+            },
+          });
+        } else {
+          const snapshots = selectedTracks.map(trackId => {
+            const track = part.tracks.find(t => t.id === trackId);
+            return { trackId, eventsBefore: track ? cloneEvents(track.events) : [] };
+          });
+          const trackLabel = selectedTracks.length === 1 ? `TRK ${selectedTracks[0]}` : `${selectedTracks.length} TRKS`;
+          undoManager.executeCommand({
+            label: `ERASE ${trackLabel}`,
+            execute: () => {
+              const p = sequencerEngine.getPartById(partId);
+              if (!p) return;
+              snapshots.forEach(({ trackId }) => {
+                const t = p.tracks.find(tr => tr.id === trackId);
+                if (t) t.events = [];
+              });
+            },
+            undo: () => {
+              const p = sequencerEngine.getPartById(partId);
+              if (!p) return;
+              snapshots.forEach(({ trackId, eventsBefore }) => {
+                const t = p.tracks.find(tr => tr.id === trackId);
+                if (t) t.events = cloneEvents(eventsBefore);
+              });
+            },
+          });
+        }
         setProject(structuredClone(sequencerEngine.getProject()));
         saveToLocalStorage();
         setEditMode('none');
@@ -429,11 +456,55 @@ export default function Home() {
 
   const handleNumPadClick = (num: number) => {
     switch (editMode) {
-      case 'quantize':
+      case 'quantize': {
         const quantizeMap: Record<number, number> = { 0: 0, 1: 1/4, 2: 1/8, 3: 1/16, 4: 1/32 };
-        sequencerEngine.setQuantize(quantizeMap[num] || 0);
+        const qVal = quantizeMap[num] || 0;
+        sequencerEngine.setQuantize(qVal);
+        if (qVal > 0 && selectedTracks.length > 0) {
+          const part = sequencerEngine.getCurrentPart();
+          const partId = part.id;
+          const tracksWithEvents = selectedTracks.filter(tid => {
+            const t = part.tracks.find(tr => tr.id === tid);
+            return t && t.events.length > 0;
+          });
+          if (tracksWithEvents.length > 0) {
+            const qSnapshots = tracksWithEvents.map(tid => {
+              const t = part.tracks.find(tr => tr.id === tid)!;
+              return { trackId: tid, eventsBefore: cloneEvents(t.events) };
+            });
+            tracksWithEvents.forEach(tid => sequencerEngine.quantizeTrackEvents(tid, qVal));
+            const qSnapshotsAfter = tracksWithEvents.map(tid => {
+              const t = part.tracks.find(tr => tr.id === tid)!;
+              return { trackId: tid, eventsAfter: cloneEvents(t.events) };
+            });
+            const qNames: Record<number, string> = { 0.25: '1/4', 0.125: '1/8', 0.0625: '1/16', 0.03125: '1/32' };
+            const qLabel = tracksWithEvents.length === 1 ? `TRK ${tracksWithEvents[0]}` : `${tracksWithEvents.length} TRKS`;
+            undoManager.executeCommand({
+              label: `QUANTIZE ${qNames[qVal] || qVal} ${qLabel}`,
+              execute: () => {
+                const p = sequencerEngine.getPartById(partId);
+                if (!p) return;
+                qSnapshotsAfter.forEach(({ trackId, eventsAfter }) => {
+                  const t = p.tracks.find(tr => tr.id === trackId);
+                  if (t) t.events = cloneEvents(eventsAfter);
+                });
+              },
+              undo: () => {
+                const p = sequencerEngine.getPartById(partId);
+                if (!p) return;
+                qSnapshots.forEach(({ trackId, eventsBefore }) => {
+                  const t = p.tracks.find(tr => tr.id === trackId);
+                  if (t) t.events = cloneEvents(eventsBefore);
+                });
+              },
+            });
+            setProject(structuredClone(sequencerEngine.getProject()));
+            saveToLocalStorage();
+          }
+        }
         setEditMode('none');
         break;
+      }
       case 'part':
         if (num >= 1 && num <= 9) {
           // Ensure the part exists in the sequencer engine
@@ -491,26 +562,30 @@ export default function Home() {
       case 'copy': {
         if (num > 0 && num <= 9) {
           const proj = sequencerEngine.getProject();
-          sequencerEngine.ensurePartExists(num - 1);
-          const destPart = proj.parts[num - 1];
-          const destBefore = destPart ? JSON.parse(JSON.stringify(destPart)) : null;
+          const destExisted = num - 1 < proj.parts.length;
+          const destBefore = destExisted ? JSON.parse(JSON.stringify(proj.parts[num - 1])) : null;
+          const partsCountBefore = proj.parts.length;
           const srcPart = proj.parts.find(p => p.id === currentPart);
           const srcClone = srcPart ? JSON.parse(JSON.stringify(srcPart)) : null;
           
           undoManager.executeCommand({
             label: `COPY P${currentPart}->P${num}`,
             execute: () => {
+              const p = sequencerEngine.getProject();
               sequencerEngine.ensurePartExists(num - 1);
               if (srcClone) {
                 const copy = JSON.parse(JSON.stringify(srcClone));
                 copy.id = num;
                 copy.name = `Part ${num}`;
-                sequencerEngine.getProject().parts[num - 1] = copy;
+                p.parts[num - 1] = copy;
               }
             },
             undo: () => {
-              if (destBefore) {
-                sequencerEngine.getProject().parts[num - 1] = JSON.parse(JSON.stringify(destBefore));
+              const p = sequencerEngine.getProject();
+              if (destExisted && destBefore) {
+                p.parts[num - 1] = JSON.parse(JSON.stringify(destBefore));
+              } else {
+                p.parts.length = partsCountBefore;
               }
             },
           });
