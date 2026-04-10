@@ -78,7 +78,7 @@ export function FAQDialog() {
     },
     {
       question: "What keyboard shortcuts are available?",
-      answer: "Transport Controls:\n\u2022 Space = Play / Stop\n\u2022 R = Record\n\u2022 Escape = Stop\n\nNavigation:\n\u2022 1-9, 0 = Select Part 1-10\n\u2022 [ = Rewind (bar 1, or previous song step)\n\u2022 ] = Forward (next bar, or next song step)\n\nEditing:\n\u2022 Ctrl+Z = Undo\n\u2022 Ctrl+Shift+Z or Ctrl+Y = Redo\n\nTracks:\n\u2022 Double-click a track button to rename it"
+      answer: "Transport Controls:\n\u2022 Space = Play / Stop\n\u2022 R = Record\n\u2022 Escape = Stop\n\nNavigation:\n\u2022 1-9, 0 = Select Part 1-10\n\u2022 [ = Rewind (bar 1, or previous song step)\n\u2022 ] = Forward (next bar, or next song step)\n\nTrack Arming:\n\u2022 Shift+1 through Shift+0 = Toggle tracks 1-10\n\nEditing:\n\u2022 Ctrl+Z = Undo\n\u2022 Ctrl+Shift+Z or Ctrl+Y = Redo\n\nTracks:\n\u2022 Double-click a track button to rename it"
     },
     {
       question: "What does MIDI ECHO do?",

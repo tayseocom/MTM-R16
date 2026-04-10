@@ -230,7 +230,7 @@ export default function Home() {
   };
 
   const handleRewind = useCallback(() => {
-    if (currentSong && transportState === 'playing') {
+    if (currentSong) {
       const idx = songPlayer.getCurrentStepIndex();
       if (idx > 0) {
         songPlayer.selectStep(idx - 1);
@@ -243,10 +243,10 @@ export default function Home() {
       sequencerEngine.rewind();
       showLcdMessage('REWIND: BAR 1');
     }
-  }, [showLcdMessage, currentSong, transportState]);
+  }, [showLcdMessage, currentSong]);
 
   const handleForward = useCallback(() => {
-    if (currentSong && transportState === 'playing') {
+    if (currentSong) {
       const song = songPlayer.getSong();
       const idx = songPlayer.getCurrentStepIndex();
       if (song && idx < song.steps.length - 1) {
@@ -262,7 +262,7 @@ export default function Home() {
       const bar = sequencerEngine.getCurrentBar();
       showLcdMessage(`FORWARD: BAR ${bar}`);
     }
-  }, [showLcdMessage, currentSong, transportState]);
+  }, [showLcdMessage, currentSong]);
 
   const handlePlay = useCallback(() => {
     if (!midiReady) {
@@ -559,17 +559,19 @@ export default function Home() {
         setEditMode('none');
         break;
       }
-      case 'part':
-        if (num >= 1 && num <= 9) {
-          sequencerEngine.ensurePartExists(num - 1);
-          sequencerEngine.getProject().currentPart = num - 1;
+      case 'part': {
+        const partNum = num === 0 ? 10 : num;
+        if (partNum >= 1 && partNum <= 10) {
+          sequencerEngine.ensurePartExists(partNum - 1);
+          sequencerEngine.getProject().currentPart = partNum - 1;
           setProject(structuredClone(sequencerEngine.getProject()));
-          setCurrentPart(num);
+          setCurrentPart(partNum);
           saveToLocalStorage();
           setEditMode('none');
-          toast({ title: `Part ${num}`, description: `Switched to Part ${num}` });
+          toast({ title: `Part ${partNum}`, description: `Switched to Part ${partNum}` });
         }
         break;
+      }
       case 'transpose': {
         const semitones = num - 5;
         const part = sequencerEngine.getCurrentPart();
@@ -691,7 +693,7 @@ export default function Home() {
 
   const getLCDText = () => {
     if (editMode === 'quantize') return 'QUANTIZE: 0=OFF 1-4=VAL';
-    if (editMode === 'part') return 'PART: SELECT 1-9';
+    if (editMode === 'part') return 'PART: SELECT 1-9, 0=10';
     if (editMode === 'copy') return 'COPY: SELECT DEST 1-9';
     if (editMode === 'transpose') return 'TRANSPOSE: 5=0 1-9';
     if (editMode === 'merge') return 'MERGE: SELECT TRACKS';
@@ -873,7 +875,14 @@ export default function Home() {
       } else if (key === ']') {
         e.preventDefault();
         handleForward();
-      } else if (editMode === 'none' && !e.ctrlKey && !e.metaKey) {
+      } else if (editMode === 'none' && e.shiftKey && !e.ctrlKey && !e.metaKey) {
+        const trackNum = e.key === '!' ? 1 : e.key === '@' ? 2 : e.key === '#' ? 3 : e.key === '$' ? 4 : e.key === '%' ? 5 : e.key === '^' ? 6 : e.key === '&' ? 7 : e.key === '*' ? 8 : e.key === '(' ? 9 : e.key === ')' ? 10 : -1;
+        if (trackNum >= 1 && trackNum <= 10) {
+          e.preventDefault();
+          handleTrackClick(trackNum, true);
+          showLcdMessage(`TOGGLE TRACK ${trackNum}`);
+        }
+      } else if (editMode === 'none' && !e.ctrlKey && !e.metaKey && !e.shiftKey) {
         const partNum = key === '0' ? 10 : parseInt(key);
         if (!isNaN(partNum) && partNum >= 1 && partNum <= 10) {
           e.preventDefault();
@@ -888,7 +897,7 @@ export default function Home() {
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [handleUndo, handleRedo, transportState, editMode, handlePlay, handleStop, handleRecord, handleRewind, handleForward, toast]);
+  }, [handleUndo, handleRedo, transportState, editMode, handlePlay, handleStop, handleRecord, handleRewind, handleForward, handleTrackClick, showLcdMessage, toast]);
 
   return (
     <div className="min-h-screen bg-background p-4 md:p-8">
