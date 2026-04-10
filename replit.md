@@ -36,6 +36,13 @@ Preferred communication style: Simple, everyday language.
 - **Multi-Select Track Workflow**: Supports selecting multiple tracks for playback and overdub recording. Shift+click to toggle tracks in/out of selection. The "primary track" (last clicked) is used for recording. Shift+clicking tracks during playback dynamically adds/removes them from the playing set in real-time.
 - **Part Length**: Adjustable from 1 to 64 bars.
 
+### Undo/Redo System
+- **UndoManager** (`client/src/lib/undo-manager.ts`): Command-pattern undo/redo with 50-level history.
+- **Supported Operations**: Record commits, track erase, transpose, part copy, track merge, part length changes, piano roll edits.
+- **UI**: Undo/Redo buttons in header toolbar; Ctrl+Z / Ctrl+Shift+Z (or Ctrl+Y) keyboard shortcuts.
+- **LCD Feedback**: Briefly displays "UNDO: [action]" or "REDO: [action]" in the sub-text area.
+- **Stack Management**: Cleared on project load (file or localStorage) to prevent stale references.
+
 ### State Persistence
 - **Client-Side**: `localStorage` for project saving/loading (JSON).
 - **Database**: Drizzle ORM schema is prepared for a PostgreSQL backend.

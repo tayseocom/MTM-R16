@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import LCDDisplay from '@/components/LCDDisplay';
 import TransportControls from '@/components/TransportControls';
 import TrackButton from '@/components/TrackButton';
@@ -9,11 +9,12 @@ import MIDIDeviceSelect from '@/components/MIDIDeviceSelect';
 import { FAQDialog } from '@/components/FAQDialog';
 import PianoRollDialog from '@/components/PianoRollDialog';
 import SongModeDialog from '@/components/SongModeDialog';
-import { Download, Upload } from 'lucide-react';
+import { Download, Upload, Undo2, Redo2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { midiManager } from '@/lib/midi';
 import { sequencerEngine } from '@/lib/sequencer-engine';
 import { songPlayer } from '@/lib/song-player';
+import { undoManager, cloneEvents } from '@/lib/undo-manager';
 import type { TransportState, EditMode, Project, MIDIEvent } from '@shared/schema';
 
 export default function Home() {
@@ -41,6 +42,32 @@ export default function Home() {
   const [liveNotes, setLiveNotes] = useState<Map<number, { velocity: number; timestamp: number }>>(new Map());
   const [currentSong, setCurrentSong] = useState<string | null>(null);
   const [project, setProject] = useState<Project>(sequencerEngine.getProject());
+  const [canUndo, setCanUndo] = useState(false);
+  const [canRedo, setCanRedo] = useState(false);
+  const [lcdOverride, setLcdOverride] = useState<string | null>(null);
+
+  const showLcdMessage = useCallback((msg: string) => {
+    setLcdOverride(msg);
+    setTimeout(() => setLcdOverride(null), 1500);
+  }, []);
+
+  const handleUndo = useCallback(() => {
+    const label = undoManager.undo();
+    if (label) {
+      setProject(structuredClone(sequencerEngine.getProject()));
+      saveToLocalStorage();
+      showLcdMessage(`UNDO: ${label}`);
+    }
+  }, [showLcdMessage]);
+
+  const handleRedo = useCallback(() => {
+    const label = undoManager.redo();
+    if (label) {
+      setProject(structuredClone(sequencerEngine.getProject()));
+      saveToLocalStorage();
+      showLcdMessage(`REDO: ${label}`);
+    }
+  }, [showLcdMessage]);
 
   useEffect(() => {
     sequencerEngine.initialize().then((ready) => {
@@ -100,12 +127,36 @@ export default function Home() {
       setCurrentPosition(sequencerEngine.getCurrentTick());
     }, 50);
 
+    const unsubscribeUndo = undoManager.onChange(() => {
+      setCanUndo(undoManager.canUndo());
+      setCanRedo(undoManager.canRedo());
+    });
+
     return () => {
       clearInterval(positionInterval);
       unsubscribe();
       unsubscribeMidi();
+      unsubscribeUndo();
     };
   }, []);
+
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return;
+      if ((e.ctrlKey || e.metaKey) && e.key === 'z' && !e.shiftKey) {
+        e.preventDefault();
+        handleUndo();
+      } else if ((e.ctrlKey || e.metaKey) && e.key === 'z' && e.shiftKey) {
+        e.preventDefault();
+        handleRedo();
+      } else if ((e.ctrlKey || e.metaKey) && e.key === 'y') {
+        e.preventDefault();
+        handleRedo();
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [handleUndo, handleRedo]);
 
   const updateDevices = () => {
     const inputs = midiManager.getInputs().map(d => ({ id: d.id || '', name: d.name || 'Unknown' }));
@@ -194,11 +245,44 @@ export default function Home() {
       return;
     }
     if (transportState === 'recording') {
-      // Stop recording but continue playback
+      const part = sequencerEngine.getCurrentPart();
+      const partId = part.id;
+      const recordingTrackIds = armedTracks.length > 0 ? armedTracks : [primaryTrack];
+      const snapshots = recordingTrackIds.map(tid => {
+        const track = part.tracks.find(t => t.id === tid);
+        return { trackId: tid, eventsBefore: track ? cloneEvents(track.events) : [] };
+      });
+
       sequencerEngine.stopRecording();
+
+      const snapshotsAfter = recordingTrackIds.map(tid => {
+        const track = part.tracks.find(t => t.id === tid);
+        return { trackId: tid, eventsAfter: track ? cloneEvents(track.events) : [] };
+      });
+
+      const trackLabel = recordingTrackIds.length === 1 ? `TRK ${recordingTrackIds[0]}` : `${recordingTrackIds.length} TRKS`;
+      undoManager.executeCommand({
+        label: `RECORD ${trackLabel}`,
+        execute: () => {
+          const p = sequencerEngine.getPartById(partId);
+          if (!p) return;
+          snapshotsAfter.forEach(({ trackId, eventsAfter }) => {
+            const t = p.tracks.find(tr => tr.id === trackId);
+            if (t) t.events = cloneEvents(eventsAfter);
+          });
+        },
+        undo: () => {
+          const p = sequencerEngine.getPartById(partId);
+          if (!p) return;
+          snapshots.forEach(({ trackId, eventsBefore }) => {
+            const t = p.tracks.find(tr => tr.id === trackId);
+            if (t) t.events = cloneEvents(eventsBefore);
+          });
+        },
+      });
+
       setTransportState('playing');
       setArmedTracks([]);
-      // Save to localStorage after recording
       saveToLocalStorage();
     } else if (transportState === 'playing') {
       // Punch-in: record to primary track only, all selected tracks continue playing
@@ -286,7 +370,16 @@ export default function Home() {
       if (newLength) {
         const lengthBars = parseInt(newLength);
         if (!isNaN(lengthBars) && lengthBars >= 1 && lengthBars <= 64) {
-          sequencerEngine.setPartLength(part.id, lengthBars);
+          const oldLength = part.length;
+          undoManager.executeCommand({
+            label: `LENGTH P${part.id} ${oldLength}->${lengthBars}`,
+            execute: () => {
+              sequencerEngine.setPartLength(part.id, lengthBars);
+            },
+            undo: () => {
+              sequencerEngine.setPartLength(part.id, oldLength);
+            },
+          });
           setProject(structuredClone(sequencerEngine.getProject()));
           saveToLocalStorage();
         } else {
@@ -299,14 +392,35 @@ export default function Home() {
     const newMode = editMode === mode ? 'none' : mode;
     setEditMode(newMode);
     
-    // Execute mode-specific actions
     if (newMode === 'erase') {
       if (confirm('Erase all events from selected tracks?')) {
-        selectedTracks.forEach(trackId => {
-          const part = sequencerEngine.getCurrentPart();
+        const part = sequencerEngine.getCurrentPart();
+        const partId = part.id;
+        const snapshots = selectedTracks.map(trackId => {
           const track = part.tracks.find(t => t.id === trackId);
-          if (track) track.events = [];
+          return { trackId, eventsBefore: track ? cloneEvents(track.events) : [] };
         });
+        const trackLabel = selectedTracks.length === 1 ? `TRK ${selectedTracks[0]}` : `${selectedTracks.length} TRKS`;
+        undoManager.executeCommand({
+          label: `ERASE ${trackLabel}`,
+          execute: () => {
+            const p = sequencerEngine.getPartById(partId);
+            if (!p) return;
+            snapshots.forEach(({ trackId }) => {
+              const t = p.tracks.find(tr => tr.id === trackId);
+              if (t) t.events = [];
+            });
+          },
+          undo: () => {
+            const p = sequencerEngine.getPartById(partId);
+            if (!p) return;
+            snapshots.forEach(({ trackId, eventsBefore }) => {
+              const t = p.tracks.find(tr => tr.id === trackId);
+              if (t) t.events = cloneEvents(eventsBefore);
+            });
+          },
+        });
+        setProject(structuredClone(sequencerEngine.getProject()));
         saveToLocalStorage();
         setEditMode('none');
       }
@@ -333,21 +447,79 @@ export default function Home() {
           setEditMode('none');
         }
         break;
-      case 'transpose':
+      case 'transpose': {
         const semitones = num - 5;
+        const part = sequencerEngine.getCurrentPart();
+        const partId = part.id;
+        const transSnapshots = selectedTracks.map(trackId => {
+          const track = part.tracks.find(t => t.id === trackId);
+          return { trackId, eventsBefore: track ? cloneEvents(track.events) : [] };
+        });
         selectedTracks.forEach(trackId => {
           sequencerEngine.transposeTrack(trackId, semitones);
         });
+        const transSnapshotsAfter = selectedTracks.map(trackId => {
+          const track = part.tracks.find(t => t.id === trackId);
+          return { trackId, eventsAfter: track ? cloneEvents(track.events) : [] };
+        });
+        const sign = semitones >= 0 ? '+' : '';
+        const transLabel = selectedTracks.length === 1 ? `TRK ${selectedTracks[0]}` : `${selectedTracks.length} TRKS`;
+        undoManager.executeCommand({
+          label: `TRANSPOSE ${sign}${semitones} ${transLabel}`,
+          execute: () => {
+            const p = sequencerEngine.getPartById(partId);
+            if (!p) return;
+            transSnapshotsAfter.forEach(({ trackId, eventsAfter }) => {
+              const t = p.tracks.find(tr => tr.id === trackId);
+              if (t) t.events = cloneEvents(eventsAfter);
+            });
+          },
+          undo: () => {
+            const p = sequencerEngine.getPartById(partId);
+            if (!p) return;
+            transSnapshots.forEach(({ trackId, eventsBefore }) => {
+              const t = p.tracks.find(tr => tr.id === trackId);
+              if (t) t.events = cloneEvents(eventsBefore);
+            });
+          },
+        });
+        setProject(structuredClone(sequencerEngine.getProject()));
         saveToLocalStorage();
         setEditMode('none');
         break;
-      case 'copy':
+      }
+      case 'copy': {
         if (num > 0 && num <= 9) {
-          sequencerEngine.copyPart(currentPart, num);
+          const proj = sequencerEngine.getProject();
+          sequencerEngine.ensurePartExists(num - 1);
+          const destPart = proj.parts[num - 1];
+          const destBefore = destPart ? JSON.parse(JSON.stringify(destPart)) : null;
+          const srcPart = proj.parts.find(p => p.id === currentPart);
+          const srcClone = srcPart ? JSON.parse(JSON.stringify(srcPart)) : null;
+          
+          undoManager.executeCommand({
+            label: `COPY P${currentPart}->P${num}`,
+            execute: () => {
+              sequencerEngine.ensurePartExists(num - 1);
+              if (srcClone) {
+                const copy = JSON.parse(JSON.stringify(srcClone));
+                copy.id = num;
+                copy.name = `Part ${num}`;
+                sequencerEngine.getProject().parts[num - 1] = copy;
+              }
+            },
+            undo: () => {
+              if (destBefore) {
+                sequencerEngine.getProject().parts[num - 1] = JSON.parse(JSON.stringify(destBefore));
+              }
+            },
+          });
+          setProject(structuredClone(sequencerEngine.getProject()));
           saveToLocalStorage();
           setEditMode('none');
         }
         break;
+      }
       default:
         console.log('Number clicked:', num);
     }
@@ -355,7 +527,31 @@ export default function Home() {
 
   const handleTrackClickInEditMode = (trackNum: number) => {
     if (editMode === 'merge' && selectedTracks.length > 0) {
-      sequencerEngine.mergeTracks(selectedTracks[0], trackNum);
+      const part = sequencerEngine.getCurrentPart();
+      const partId = part.id;
+      const destTrack = part.tracks.find(t => t.id === trackNum);
+      const destBefore = destTrack ? cloneEvents(destTrack.events) : [];
+      const sourceId = selectedTracks[0];
+
+      sequencerEngine.mergeTracks(sourceId, trackNum);
+      const destAfter = destTrack ? cloneEvents(destTrack.events) : [];
+
+      undoManager.executeCommand({
+        label: `MERGE TRK ${sourceId}->TRK ${trackNum}`,
+        execute: () => {
+          const p = sequencerEngine.getPartById(partId);
+          if (!p) return;
+          const t = p.tracks.find(tr => tr.id === trackNum);
+          if (t) t.events = cloneEvents(destAfter);
+        },
+        undo: () => {
+          const p = sequencerEngine.getPartById(partId);
+          if (!p) return;
+          const t = p.tracks.find(tr => tr.id === trackNum);
+          if (t) t.events = cloneEvents(destBefore);
+        },
+      });
+      setProject(structuredClone(sequencerEngine.getProject()));
       saveToLocalStorage();
       setEditMode('none');
     } else {
@@ -390,7 +586,7 @@ export default function Home() {
   };
 
   const getLCDSubText = () => {
-    // Check transport/edit states first (before MIDI status)
+    if (lcdOverride) return lcdOverride;
     if (transportState === 'recording') {
       const trackList = armedTracks.length > 0 ? armedTracks.join(',') : selectedTracks.join(',');
       return `RECORDING TRK ${trackList}`;
@@ -429,9 +625,27 @@ export default function Home() {
   const handlePianoRollEventsChange = (events: MIDIEvent[]) => {
     if (selectedTracks.length > 0) {
       const part = sequencerEngine.getCurrentPart();
+      const partId = part.id;
       const track = part.tracks.find(t => t.id === selectedTracks[0]);
       if (track) {
-        track.events = events;
+        const eventsBefore = cloneEvents(track.events);
+        const eventsAfter = cloneEvents(events);
+        const trackId = selectedTracks[0];
+        undoManager.executeCommand({
+          label: `EDIT TRK ${trackId}`,
+          execute: () => {
+            const p = sequencerEngine.getPartById(partId);
+            if (!p) return;
+            const t = p.tracks.find(tr => tr.id === trackId);
+            if (t) t.events = cloneEvents(eventsAfter);
+          },
+          undo: () => {
+            const p = sequencerEngine.getPartById(partId);
+            if (!p) return;
+            const t = p.tracks.find(tr => tr.id === trackId);
+            if (t) t.events = cloneEvents(eventsBefore);
+          },
+        });
         saveToLocalStorage();
       }
     }
@@ -474,6 +688,7 @@ export default function Home() {
             setTempo(loadedProject.tempo || 120);
             setCurrentPart((loadedProject.currentPart || 0) + 1);
             setCurrentSong(loadedProject.currentSong || null);
+            undoManager.clear();
             saveToLocalStorage();
           } catch (err) {
             console.error('Failed to load project:', err);
@@ -506,6 +721,26 @@ export default function Home() {
             <h2 className="text-4xl font-bold text-primary font-mono" data-testid="model">MTM-R16</h2>
           </div>
           <div className="flex gap-2 items-center">
+            <Button 
+              size="icon" 
+              variant="ghost" 
+              onClick={handleUndo}
+              disabled={!canUndo}
+              data-testid="button-undo"
+              aria-label="Undo"
+            >
+              <Undo2 className="w-4 h-4" />
+            </Button>
+            <Button 
+              size="icon" 
+              variant="ghost" 
+              onClick={handleRedo}
+              disabled={!canRedo}
+              data-testid="button-redo"
+              aria-label="Redo"
+            >
+              <Redo2 className="w-4 h-4" />
+            </Button>
             <FAQDialog />
             <Button 
               variant="default" 

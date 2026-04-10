@@ -615,6 +615,10 @@ export class SequencerEngine {
     return this.project;
   }
 
+  getPartById(partId: number): import('@shared/schema').Part | undefined {
+    return this.project.parts.find(p => p.id === partId);
+  }
+
   getCurrentTick(): number {
     return this.currentTick;
   }
