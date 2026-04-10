@@ -112,6 +112,7 @@ export default function Home() {
         setTempo(loadedProject.tempo);
         setCurrentPart(loadedProject.currentPart + 1);
         setCurrentSong(loadedProject.currentSong || null);
+        undoManager.clear();
       } catch (err) {
         console.error('Failed to load saved project:', err);
       }
@@ -143,13 +144,14 @@ export default function Home() {
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return;
-      if ((e.ctrlKey || e.metaKey) && e.key === 'z' && !e.shiftKey) {
+      const key = e.key.toLowerCase();
+      if ((e.ctrlKey || e.metaKey) && key === 'z' && !e.shiftKey) {
         e.preventDefault();
         handleUndo();
-      } else if ((e.ctrlKey || e.metaKey) && e.key === 'z' && e.shiftKey) {
+      } else if ((e.ctrlKey || e.metaKey) && key === 'z' && e.shiftKey) {
         e.preventDefault();
         handleRedo();
-      } else if ((e.ctrlKey || e.metaKey) && e.key === 'y') {
+      } else if ((e.ctrlKey || e.metaKey) && key === 'y') {
         e.preventDefault();
         handleRedo();
       }
