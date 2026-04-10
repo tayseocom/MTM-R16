@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import LCDDisplay from '@/components/LCDDisplay';
 import TransportControls from '@/components/TransportControls';
 import TrackButton from '@/components/TrackButton';
@@ -11,6 +11,9 @@ import PianoRollDialog from '@/components/PianoRollDialog';
 import SongModeDialog from '@/components/SongModeDialog';
 import { Download, Upload, Undo2, Redo2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
+import { useToast } from '@/hooks/use-toast';
 import { midiManager } from '@/lib/midi';
 import { sequencerEngine } from '@/lib/sequencer-engine';
 import { songPlayer } from '@/lib/song-player';
@@ -45,6 +48,13 @@ export default function Home() {
   const [canUndo, setCanUndo] = useState(false);
   const [canRedo, setCanRedo] = useState(false);
   const [lcdOverride, setLcdOverride] = useState<string | null>(null);
+  const [tempoPopoverOpen, setTempoPopoverOpen] = useState(false);
+  const [tempoInput, setTempoInput] = useState('');
+  const [lengthPopoverOpen, setLengthPopoverOpen] = useState(false);
+  const [lengthInput, setLengthInput] = useState('');
+  const { toast } = useToast();
+  const tempoInputRef = useRef<HTMLInputElement>(null);
+  const lengthInputRef = useRef<HTMLInputElement>(null);
 
   const showLcdMessage = useCallback((msg: string) => {
     setLcdOverride(msg);
@@ -141,25 +151,6 @@ export default function Home() {
     };
   }, []);
 
-  useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return;
-      const key = e.key.toLowerCase();
-      if ((e.ctrlKey || e.metaKey) && key === 'z' && !e.shiftKey) {
-        e.preventDefault();
-        handleUndo();
-      } else if ((e.ctrlKey || e.metaKey) && key === 'z' && e.shiftKey) {
-        e.preventDefault();
-        handleRedo();
-      } else if ((e.ctrlKey || e.metaKey) && key === 'y') {
-        e.preventDefault();
-        handleRedo();
-      }
-    };
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [handleUndo, handleRedo]);
-
   const updateDevices = () => {
     const inputs = midiManager.getInputs().map(d => ({ id: d.id || '', name: d.name || 'Unknown' }));
     const outputs = midiManager.getOutputs().map(d => ({ id: d.id || '', name: d.name || 'Unknown' }));
@@ -198,9 +189,60 @@ export default function Home() {
     saveToLocalStorage();
   };
 
-  const handlePlay = () => {
+  const handleTempoSubmit = () => {
+    const t = parseInt(tempoInput);
+    if (t >= 40 && t <= 250) {
+      handleTempoChange(t);
+      toast({ title: 'Tempo', description: `Set to ${t} BPM` });
+    }
+    setTempoPopoverOpen(false);
+  };
+
+  const handleLengthSubmit = () => {
+    const lengthBars = parseInt(lengthInput);
+    if (!isNaN(lengthBars) && lengthBars >= 1 && lengthBars <= 64) {
+      const part = sequencerEngine.getCurrentPart();
+      const oldLength = part.length;
+      undoManager.executeCommand({
+        label: `LENGTH P${part.id} ${oldLength}->${lengthBars}`,
+        execute: () => {
+          sequencerEngine.setPartLength(part.id, lengthBars);
+        },
+        undo: () => {
+          sequencerEngine.setPartLength(part.id, oldLength);
+        },
+      });
+      setProject(structuredClone(sequencerEngine.getProject()));
+      saveToLocalStorage();
+      toast({ title: 'Part Length', description: `Set to ${lengthBars} bars` });
+    }
+    setLengthPopoverOpen(false);
+  };
+
+  const handleTrackRename = (trackNum: number, newName: string) => {
+    const part = sequencerEngine.getCurrentPart();
+    const track = part.tracks.find(t => t.id === trackNum);
+    if (track) {
+      track.name = newName;
+      setProject(structuredClone(sequencerEngine.getProject()));
+      saveToLocalStorage();
+    }
+  };
+
+  const handleRewind = useCallback(() => {
+    sequencerEngine.rewind();
+    showLcdMessage('REWIND: BAR 1');
+  }, [showLcdMessage]);
+
+  const handleForward = useCallback(() => {
+    sequencerEngine.forward();
+    const bar = sequencerEngine.getCurrentBar();
+    showLcdMessage(`FORWARD: BAR ${bar}`);
+  }, [showLcdMessage]);
+
+  const handlePlay = useCallback(() => {
     if (!midiReady) {
-      alert('Web MIDI not available. Please open in Chrome/Edge with MIDI devices connected.');
+      toast({ title: 'No MIDI', description: 'Open in Chrome/Edge with MIDI devices connected.' });
       return;
     }
     if (transportState === 'playing') {
@@ -212,10 +254,8 @@ export default function Home() {
       setPlayingTracks([]);
     } else {
       if (currentSong) {
-        // Song mode: play the current song
         songPlayer.play(currentSong);
         setTransportState('playing');
-        // In song mode, all tracks from the active part are potentially playing
         const project = sequencerEngine.getProject();
         const currentPartIndex = project.currentPart;
         if (currentPartIndex >= 0 && currentPartIndex < project.parts.length) {
@@ -223,15 +263,14 @@ export default function Home() {
           setPlayingTracks(allTracks);
         }
       } else {
-        // Part mode: play selected tracks
         sequencerEngine.startPlayback(selectedTracks);
         setTransportState('playing');
         setPlayingTracks([...selectedTracks]);
       }
     }
-  };
+  }, [midiReady, transportState, currentSong, selectedTracks, toast]);
 
-  const handleStop = () => {
+  const handleStop = useCallback(() => {
     if (currentSong) {
       songPlayer.stop();
     }
@@ -239,11 +278,11 @@ export default function Home() {
     setTransportState('stopped');
     setPlayingTracks([]);
     setArmedTracks([]);
-  };
+  }, [currentSong]);
 
-  const handleRecord = () => {
+  const handleRecord = useCallback(() => {
     if (!midiReady) {
-      alert('Web MIDI not available. Please open in Chrome/Edge with MIDI devices connected.');
+      toast({ title: 'No MIDI', description: 'Open in Chrome/Edge with MIDI devices connected.' });
       return;
     }
     if (transportState === 'recording') {
@@ -285,14 +324,13 @@ export default function Home() {
 
       setTransportState('playing');
       setArmedTracks([]);
+      toast({ title: 'Recorded', description: `Recording committed to ${trackLabel}` });
       saveToLocalStorage();
     } else if (transportState === 'playing') {
-      // Punch-in: record to primary track only, all selected tracks continue playing
       sequencerEngine.startRecording([primaryTrack], true);
       setTransportState('recording');
       setArmedTracks([primaryTrack]);
     } else {
-      // Fresh recording: count-in then record to primary track, all selected tracks play
       setTransportState('countIn');
       setArmedTracks([primaryTrack]);
       setTimeout(() => {
@@ -300,7 +338,7 @@ export default function Home() {
         setTransportState('recording');
       }, 2000);
     }
-  };
+  }, [midiReady, transportState, armedTracks, primaryTrack, toast]);
 
   const handleTrackClick = (trackNum: number, shiftKey: boolean = false) => {
     if (editMode === 'merge' || editMode === 'copy') {
@@ -368,26 +406,8 @@ export default function Home() {
 
     if (mode === 'length') {
       const part = sequencerEngine.getCurrentPart();
-      const newLength = prompt(`Enter part length (1-64 bars):`, part.length.toString());
-      if (newLength) {
-        const lengthBars = parseInt(newLength);
-        if (!isNaN(lengthBars) && lengthBars >= 1 && lengthBars <= 64) {
-          const oldLength = part.length;
-          undoManager.executeCommand({
-            label: `LENGTH P${part.id} ${oldLength}->${lengthBars}`,
-            execute: () => {
-              sequencerEngine.setPartLength(part.id, lengthBars);
-            },
-            undo: () => {
-              sequencerEngine.setPartLength(part.id, oldLength);
-            },
-          });
-          setProject(structuredClone(sequencerEngine.getProject()));
-          saveToLocalStorage();
-        } else {
-          alert('Invalid length. Please enter a number between 1 and 64.');
-        }
-      }
+      setLengthInput(part.length.toString());
+      setLengthPopoverOpen(true);
       return;
     }
 
@@ -452,6 +472,12 @@ export default function Home() {
         setProject(structuredClone(sequencerEngine.getProject()));
         saveToLocalStorage();
         setEditMode('none');
+        if (eraseAll) {
+          toast({ title: 'Part Erased', description: `All tracks in Part ${partId} cleared` });
+        } else {
+          const tl = selectedTracks.length === 1 ? `Track ${selectedTracks[0]}` : `${selectedTracks.length} tracks`;
+          toast({ title: 'Erased', description: `${tl} cleared` });
+        }
       }
     }
   };
@@ -502,6 +528,8 @@ export default function Home() {
             });
             setProject(structuredClone(sequencerEngine.getProject()));
             saveToLocalStorage();
+            const qNames2: Record<number, string> = { 0.25: '1/4', 0.125: '1/8', 0.0625: '1/16', 0.03125: '1/32' };
+            toast({ title: 'Quantized', description: `${tracksWithEvents.length} track(s) quantized to ${qNames2[qVal] || qVal}` });
           }
         }
         setEditMode('none');
@@ -509,15 +537,13 @@ export default function Home() {
       }
       case 'part':
         if (num >= 1 && num <= 9) {
-          // Ensure the part exists in the sequencer engine
           sequencerEngine.ensurePartExists(num - 1);
-          // Update current part in the engine
           sequencerEngine.getProject().currentPart = num - 1;
-          // Sync React state with engine's canonical project
           setProject(structuredClone(sequencerEngine.getProject()));
           setCurrentPart(num);
           saveToLocalStorage();
           setEditMode('none');
+          toast({ title: `Part ${num}`, description: `Switched to Part ${num}` });
         }
         break;
       case 'transpose': {
@@ -559,6 +585,7 @@ export default function Home() {
         setProject(structuredClone(sequencerEngine.getProject()));
         saveToLocalStorage();
         setEditMode('none');
+        toast({ title: 'Transposed', description: `${transLabel} ${sign}${semitones} semitones` });
         break;
       }
       case 'copy': {
@@ -594,11 +621,12 @@ export default function Home() {
           setProject(structuredClone(sequencerEngine.getProject()));
           saveToLocalStorage();
           setEditMode('none');
+          toast({ title: 'Copied', description: `Part ${currentPart} copied to Part ${num}` });
         }
         break;
       }
       default:
-        console.log('Number clicked:', num);
+        break;
     }
   };
 
@@ -631,13 +659,13 @@ export default function Home() {
       setProject(structuredClone(sequencerEngine.getProject()));
       saveToLocalStorage();
       setEditMode('none');
+      toast({ title: 'Merged', description: `Track ${sourceId} merged into Track ${trackNum}` });
     } else {
       handleTrackClick(trackNum);
     }
   };
 
   const getLCDText = () => {
-    // Check editMode first (before MIDI status) so modes work even in demo mode
     if (editMode === 'quantize') return 'QUANTIZE: 0=OFF 1-4=VAL';
     if (editMode === 'part') return 'PART: SELECT 1-9';
     if (editMode === 'copy') return 'COPY: SELECT DEST 1-9';
@@ -648,8 +676,6 @@ export default function Home() {
     if (editMode === 'load') return 'LOAD: SELECT FILE';
     if (editMode === 'save') return 'SAVE: ENTER NAME';
     if (editMode === 'midi_chan') return 'MIDI CHAN: SELECT TRACK';
-    
-    if (!midiReady) return 'NO MIDI - DEMO MODE';
     
     const part = sequencerEngine.getCurrentPart();
     const partInfo = `PART ${currentPart.toString().padStart(2, '0')} (${part.length} BARS)`;
@@ -682,14 +708,17 @@ export default function Home() {
     if (transportState === 'playing') return 'PLAYING';
     
     if (editMode === 'quantize' || editMode === 'part' || editMode === 'transpose' || editMode === 'copy') {
-      return 'USE NUMPAD OR PROMPT';
+      return 'USE NUMPAD';
     }
     if (editMode !== 'none') return 'PRESS BUTTON OR TRACK';
     
-    if (!midiReady) return 'OPEN IN CHROME/EDGE FOR MIDI';
-    
     const part = sequencerEngine.getCurrentPart();
     const recordedTracks = part.tracks.filter(t => t.events.length > 0).length;
+    if (!midiReady) {
+      return recordedTracks > 0 
+        ? `${recordedTracks} TRACK${recordedTracks === 1 ? '' : 'S'} [DEMO]`
+        : 'NO MIDI - DEMO MODE';
+    }
     if (recordedTracks === 0) return 'NO TRACKS RECORDED';
     return `${recordedTracks} TRACK${recordedTracks === 1 ? '' : 'S'} RECORDED`;
   };
@@ -747,6 +776,7 @@ export default function Home() {
     a.download = `mtm-project-${Date.now()}.json`;
     a.click();
     URL.revokeObjectURL(url);
+    toast({ title: 'Saved', description: 'Project exported as JSON file' });
   };
 
   const handleLoadProject = () => {
@@ -767,6 +797,7 @@ export default function Home() {
             setCurrentSong(loadedProject.currentSong || null);
             undoManager.clear();
             saveToLocalStorage();
+            toast({ title: 'Loaded', description: 'Project loaded from file' });
           } catch (err) {
             console.error('Failed to load project:', err);
           }
@@ -785,6 +816,55 @@ export default function Home() {
     setCurrentSong(updatedProject.currentSong || null);
     saveToLocalStorage();
   };
+
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return;
+      const key = e.key.toLowerCase();
+      if ((e.ctrlKey || e.metaKey) && key === 'z' && !e.shiftKey) {
+        e.preventDefault();
+        handleUndo();
+      } else if ((e.ctrlKey || e.metaKey) && key === 'z' && e.shiftKey) {
+        e.preventDefault();
+        handleRedo();
+      } else if ((e.ctrlKey || e.metaKey) && key === 'y') {
+        e.preventDefault();
+        handleRedo();
+      } else if (key === ' ' && !e.ctrlKey && !e.metaKey) {
+        e.preventDefault();
+        if (transportState === 'playing' || transportState === 'recording') {
+          handleStop();
+        } else {
+          handlePlay();
+        }
+      } else if (key === 'r' && !e.ctrlKey && !e.metaKey) {
+        e.preventDefault();
+        handleRecord();
+      } else if (key === 'escape') {
+        e.preventDefault();
+        handleStop();
+      } else if (key === '[') {
+        e.preventDefault();
+        handleRewind();
+      } else if (key === ']') {
+        e.preventDefault();
+        handleForward();
+      } else if (editMode === 'none' && !e.ctrlKey && !e.metaKey) {
+        const partNum = key === '0' ? 10 : parseInt(key);
+        if (!isNaN(partNum) && partNum >= 1 && partNum <= 9) {
+          e.preventDefault();
+          sequencerEngine.ensurePartExists(partNum - 1);
+          sequencerEngine.getProject().currentPart = partNum - 1;
+          setProject(structuredClone(sequencerEngine.getProject()));
+          setCurrentPart(partNum);
+          saveToLocalStorage();
+          toast({ title: `Part ${partNum}`, description: `Switched to Part ${partNum}` });
+        }
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [handleUndo, handleRedo, transportState, editMode, handlePlay, handleStop, handleRecord, handleRewind, handleForward, toast]);
 
   return (
     <div className="min-h-screen bg-background p-4 md:p-8">
@@ -863,13 +943,8 @@ export default function Home() {
                 sequencerEngine.setMetronome(newMetroState);
               }}
               onTempoClick={() => {
-                const newTempo = prompt('Enter tempo (40-250 BPM):', tempo.toString());
-                if (newTempo) {
-                  const t = parseInt(newTempo);
-                  if (t >= 40 && t <= 250) {
-                    handleTempoChange(t);
-                  }
-                }
+                setTempoInput(tempo.toString());
+                setTempoPopoverOpen(true);
               }}
               onMidiEchoClick={() => {
                 const newEchoState = !midiEchoEnabled;
@@ -894,40 +969,54 @@ export default function Home() {
               onPlay={handlePlay}
               onStop={handleStop}
               onRecord={handleRecord}
-              onRewind={() => console.log('Rewind')}
-              onForward={() => console.log('Forward')}
+              onRewind={handleRewind}
+              onForward={handleForward}
             />
           </div>
 
           {/* Track Grid */}
           <div>
             <div className="grid grid-cols-8 gap-1 mb-2">
-              {[1, 2, 3, 4, 5, 6, 7, 8].map((num) => (
-                <TrackButton 
-                  key={num}
-                  trackNumber={num}
-                  selected={selectedTracks.includes(num)}
-                  armed={armedTracks.includes(num)}
-                  playing={playingTracks.includes(num)}
-                  muted={mutedTracks.includes(num)}
-                  progress={playbackProgress}
-                  onClick={(e) => handleTrackClick(num, e.shiftKey)}
-                />
-              ))}
+              {[1, 2, 3, 4, 5, 6, 7, 8].map((num) => {
+                const part = sequencerEngine.getCurrentPart();
+                const track = part.tracks.find(t => t.id === num);
+                return (
+                  <TrackButton 
+                    key={num}
+                    trackNumber={num}
+                    trackName={track?.name}
+                    hasEvents={track ? track.events.length > 0 : false}
+                    selected={selectedTracks.includes(num)}
+                    armed={armedTracks.includes(num)}
+                    playing={playingTracks.includes(num)}
+                    muted={mutedTracks.includes(num)}
+                    progress={playbackProgress}
+                    onClick={(e) => handleTrackClick(num, e.shiftKey)}
+                    onRename={(name) => handleTrackRename(num, name)}
+                  />
+                );
+              })}
             </div>
             <div className="grid grid-cols-8 gap-1">
-              {[9, 10, 11, 12, 13, 14, 15, 16].map((num) => (
-                <TrackButton 
-                  key={num}
-                  trackNumber={num}
-                  selected={selectedTracks.includes(num)}
-                  armed={armedTracks.includes(num)}
-                  playing={playingTracks.includes(num)}
-                  muted={mutedTracks.includes(num)}
-                  progress={playbackProgress}
-                  onClick={(e) => handleTrackClick(num, e.shiftKey)}
-                />
-              ))}
+              {[9, 10, 11, 12, 13, 14, 15, 16].map((num) => {
+                const part = sequencerEngine.getCurrentPart();
+                const track = part.tracks.find(t => t.id === num);
+                return (
+                  <TrackButton 
+                    key={num}
+                    trackNumber={num}
+                    trackName={track?.name}
+                    hasEvents={track ? track.events.length > 0 : false}
+                    selected={selectedTracks.includes(num)}
+                    armed={armedTracks.includes(num)}
+                    playing={playingTracks.includes(num)}
+                    muted={mutedTracks.includes(num)}
+                    progress={playbackProgress}
+                    onClick={(e) => handleTrackClick(num, e.shiftKey)}
+                    onRename={(name) => handleTrackRename(num, name)}
+                  />
+                );
+              })}
             </div>
           </div>
 
@@ -978,6 +1067,56 @@ export default function Home() {
           </div>
         </div>
       </div>
+
+      <Popover open={tempoPopoverOpen} onOpenChange={setTempoPopoverOpen}>
+        <PopoverTrigger asChild>
+          <span className="hidden" />
+        </PopoverTrigger>
+        <PopoverContent className="w-64 p-4" align="center" side="top">
+          <div className="space-y-3">
+            <label className="text-sm font-medium text-foreground">Tempo (40-250 BPM)</label>
+            <div className="flex gap-2">
+              <Input
+                ref={tempoInputRef}
+                type="number"
+                min={40}
+                max={250}
+                value={tempoInput}
+                onChange={(e) => setTempoInput(e.target.value)}
+                onKeyDown={(e) => { if (e.key === 'Enter') handleTempoSubmit(); }}
+                data-testid="input-tempo"
+                autoFocus
+              />
+              <Button onClick={handleTempoSubmit} data-testid="button-tempo-ok">OK</Button>
+            </div>
+          </div>
+        </PopoverContent>
+      </Popover>
+
+      <Popover open={lengthPopoverOpen} onOpenChange={setLengthPopoverOpen}>
+        <PopoverTrigger asChild>
+          <span className="hidden" />
+        </PopoverTrigger>
+        <PopoverContent className="w-64 p-4" align="center" side="top">
+          <div className="space-y-3">
+            <label className="text-sm font-medium text-foreground">Part Length (1-64 bars)</label>
+            <div className="flex gap-2">
+              <Input
+                ref={lengthInputRef}
+                type="number"
+                min={1}
+                max={64}
+                value={lengthInput}
+                onChange={(e) => setLengthInput(e.target.value)}
+                onKeyDown={(e) => { if (e.key === 'Enter') handleLengthSubmit(); }}
+                data-testid="input-length"
+                autoFocus
+              />
+              <Button onClick={handleLengthSubmit} data-testid="button-length-ok">OK</Button>
+            </div>
+          </div>
+        </PopoverContent>
+      </Popover>
 
       <PianoRollDialog
         open={pianoRollOpen}

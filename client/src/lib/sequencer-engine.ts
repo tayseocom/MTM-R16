@@ -619,6 +619,36 @@ export class SequencerEngine {
     return this.project.parts.find(p => p.id === partId);
   }
 
+  rewind() {
+    this.currentTick = 0;
+    if (this.isPlaying) {
+      this.pendingEventsByTrack.clear();
+      this.lastEmitTime = 0;
+    }
+  }
+
+  forward() {
+    const part = this.getCurrentPart();
+    const ticksPerBeat = 24;
+    const beatsPerBar = 4;
+    const barTicks = beatsPerBar * ticksPerBeat;
+    const totalTicks = part.length * barTicks;
+    const currentBar = Math.floor(this.currentTick / barTicks);
+    const nextBarTick = (currentBar + 1) * barTicks;
+    this.currentTick = nextBarTick >= totalTicks ? 0 : nextBarTick;
+    if (this.isPlaying) {
+      this.pendingEventsByTrack.clear();
+      this.lastEmitTime = 0;
+    }
+  }
+
+  getCurrentBar(): number {
+    const ticksPerBeat = 24;
+    const beatsPerBar = 4;
+    const barTicks = beatsPerBar * ticksPerBeat;
+    return Math.floor(this.currentTick / barTicks) + 1;
+  }
+
   getCurrentTick(): number {
     return this.currentTick;
   }

@@ -38,10 +38,24 @@ Preferred communication style: Simple, everyday language.
 
 ### Undo/Redo System
 - **UndoManager** (`client/src/lib/undo-manager.ts`): Command-pattern undo/redo with 50-level history.
-- **Supported Operations**: Record commits, track erase, transpose, part copy, track merge, part length changes, piano roll edits.
+- **Supported Operations**: Record commits, track erase, part erase, transpose, quantize (retroactive), part copy, track merge, part length changes, piano roll edits.
 - **UI**: Undo/Redo buttons in header toolbar; Ctrl+Z / Ctrl+Shift+Z (or Ctrl+Y) keyboard shortcuts.
 - **LCD Feedback**: Briefly displays "UNDO: [action]" or "REDO: [action]" in the sub-text area.
 - **Stack Management**: Cleared on project load (file or localStorage) to prevent stale references.
+
+### Keyboard Shortcuts
+- **Transport**: Space = Play/Stop, R = Record, Escape = Stop.
+- **Navigation**: 1-9 = Select Part, [ = Rewind (bar 1), ] = Forward (next bar).
+- **Editing**: Ctrl+Z = Undo, Ctrl+Shift+Z / Ctrl+Y = Redo.
+- **Tracks**: Double-click track button to rename.
+
+### Toast Notifications
+- Uses shadcn `useToast` for confirmations on: transpose, quantize, erase, copy, merge, part switch, save/load, tempo change, length change, recording commit.
+
+### Inline Editing (No Browser Prompts)
+- **Tempo**: Popover with numeric input (40-250 BPM) replaces `prompt()`.
+- **Part Length**: Popover with numeric input (1-64 bars) replaces `prompt()`.
+- **Track Names**: Double-click track button for inline rename input.
 
 ### State Persistence
 - **Client-Side**: `localStorage` for project saving/loading (JSON).
@@ -60,6 +74,12 @@ Custom hardware-themed React components: `HardwareButton`, `LCDDisplay`, `LED`, 
 - **Calculation**: Progress = (currentTick % totalTicks) / totalTicks, updated every 50ms
 - **Display**: Only visible when track is actively playing; automatically resets to 0 when stopped
 - **Sync**: All tracks show synchronized progress as they loop together
+
+**Track Content Indicator**: Amber bar at the bottom of track buttons with recorded events (visible when not playing).
+
+**Track Rename**: Double-click a track button to show inline input for renaming. Press Enter to confirm, Escape to cancel.
+
+**Rewind/Forward**: Rewind resets to bar 1; Forward advances to next bar (wrapping to bar 1 at end of part). Both work during playback and while stopped.
 
 ### Threading Model
 - **Main Thread**: UI, user interaction, project state.

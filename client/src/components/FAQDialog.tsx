@@ -77,6 +77,10 @@ export function FAQDialog() {
       answer: "By default, Track 1 = MIDI Channel 1, Track 2 = MIDI Channel 2, etc. (1-16). Use the MIDI CHAN button to reassign channels."
     },
     {
+      question: "What keyboard shortcuts are available?",
+      answer: "Transport Controls:\n\u2022 Space = Play / Stop\n\u2022 R = Record\n\u2022 Escape = Stop\n\nNavigation:\n\u2022 1-9 = Select Part 1-9\n\u2022 [ = Rewind (bar 1)\n\u2022 ] = Forward (next bar)\n\nEditing:\n\u2022 Ctrl+Z = Undo\n\u2022 Ctrl+Shift+Z or Ctrl+Y = Redo\n\nTracks:\n\u2022 Double-click a track button to rename it"
+    },
+    {
       question: "What does MIDI ECHO do?",
       answer: "MIDI ECHO (also called MIDI Thru) routes incoming MIDI directly to the output. When enabled (green LED), you can hear what you're playing on your synthesizer in real-time, even when not recording. This is essential for monitoring while recording."
     },
