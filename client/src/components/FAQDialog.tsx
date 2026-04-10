@@ -14,7 +14,7 @@ export function FAQDialog() {
   const faqs = [
     {
       question: "How do I set the MIDI clock BPM (tempo)?",
-      answer: "Click the TEMPO button, then use the number pad (1-9, 0) to enter the desired BPM value. The tempo range is 40-250 BPM. The current tempo is always displayed on the LCD screen."
+      answer: "Click the TEMPO display on the LCD screen to open an inline editor. Type your desired BPM value (40-250) and press Enter to confirm. The current tempo is always displayed on the LCD screen."
     },
     {
       question: "How do I record MIDI data?",
@@ -30,7 +30,7 @@ export function FAQDialog() {
     },
     {
       question: "How do I change the part length?",
-      answer: "Press the LENGTH button, then use the number pad to enter the number of bars (measures) for the current part. Default is 4 bars."
+      answer: "Click the LENGTH display on the LCD screen to open an inline editor. Type the number of bars (1-64) and press Enter to confirm. Default is 4 bars."
     },
     {
       question: "How do I switch between parts?",
