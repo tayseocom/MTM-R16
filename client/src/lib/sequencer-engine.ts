@@ -621,6 +621,7 @@ export class SequencerEngine {
 
   rewind() {
     this.currentTick = 0;
+    audioClock.resetTick(0);
     if (this.isPlaying) {
       this.pendingEventsByTrack.clear();
       this.lastEmitTime = 0;
@@ -635,7 +636,9 @@ export class SequencerEngine {
     const totalTicks = part.length * barTicks;
     const currentBar = Math.floor(this.currentTick / barTicks);
     const nextBarTick = (currentBar + 1) * barTicks;
-    this.currentTick = nextBarTick >= totalTicks ? 0 : nextBarTick;
+    const newTick = nextBarTick >= totalTicks ? 0 : nextBarTick;
+    this.currentTick = newTick;
+    audioClock.resetTick(newTick);
     if (this.isPlaying) {
       this.pendingEventsByTrack.clear();
       this.lastEmitTime = 0;

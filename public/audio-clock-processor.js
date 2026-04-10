@@ -37,6 +37,12 @@ class AudioClockProcessor extends AudioWorkletProcessor {
         case 'setCountIn':
           this.countIn = data;
           break;
+        case 'resetTick':
+          this.tickCounter = data || 0;
+          this.sampleCounter = 0;
+          this.beatCounter = Math.floor(this.tickCounter / this.ticksPerBeat);
+          this.barCounter = Math.floor(this.beatCounter / 4);
+          break;
       }
     };
   }

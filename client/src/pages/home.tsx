@@ -230,15 +230,39 @@ export default function Home() {
   };
 
   const handleRewind = useCallback(() => {
-    sequencerEngine.rewind();
-    showLcdMessage('REWIND: BAR 1');
-  }, [showLcdMessage]);
+    if (currentSong && transportState === 'playing') {
+      const idx = songPlayer.getCurrentStepIndex();
+      if (idx > 0) {
+        songPlayer.selectStep(idx - 1);
+        showLcdMessage(`SONG STEP ${idx}`);
+      } else {
+        sequencerEngine.rewind();
+        showLcdMessage('REWIND: BAR 1');
+      }
+    } else {
+      sequencerEngine.rewind();
+      showLcdMessage('REWIND: BAR 1');
+    }
+  }, [showLcdMessage, currentSong, transportState]);
 
   const handleForward = useCallback(() => {
-    sequencerEngine.forward();
-    const bar = sequencerEngine.getCurrentBar();
-    showLcdMessage(`FORWARD: BAR ${bar}`);
-  }, [showLcdMessage]);
+    if (currentSong && transportState === 'playing') {
+      const song = songPlayer.getSong();
+      const idx = songPlayer.getCurrentStepIndex();
+      if (song && idx < song.steps.length - 1) {
+        songPlayer.selectStep(idx + 1);
+        showLcdMessage(`SONG STEP ${idx + 2}`);
+      } else {
+        sequencerEngine.forward();
+        const bar = sequencerEngine.getCurrentBar();
+        showLcdMessage(`FORWARD: BAR ${bar}`);
+      }
+    } else {
+      sequencerEngine.forward();
+      const bar = sequencerEngine.getCurrentBar();
+      showLcdMessage(`FORWARD: BAR ${bar}`);
+    }
+  }, [showLcdMessage, currentSong, transportState]);
 
   const handlePlay = useCallback(() => {
     if (!midiReady) {
@@ -851,7 +875,7 @@ export default function Home() {
         handleForward();
       } else if (editMode === 'none' && !e.ctrlKey && !e.metaKey) {
         const partNum = key === '0' ? 10 : parseInt(key);
-        if (!isNaN(partNum) && partNum >= 1 && partNum <= 9) {
+        if (!isNaN(partNum) && partNum >= 1 && partNum <= 10) {
           e.preventDefault();
           sequencerEngine.ensurePartExists(partNum - 1);
           sequencerEngine.getProject().currentPart = partNum - 1;

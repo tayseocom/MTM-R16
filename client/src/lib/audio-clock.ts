@@ -141,6 +141,12 @@ export class AudioClock {
     this.onMetronome = callback;
   }
 
+  resetTick(tick: number = 0) {
+    this.fallbackTickCounter = tick;
+    this.fallbackStartTime = performance.now();
+    this.audioWorklet?.port.postMessage({ type: 'resetTick', data: tick });
+  }
+
   getCurrentTime(): number {
     if (this.useFallback && this.fallbackInterval !== null) {
       return (performance.now() - this.fallbackStartTime) / 1000;

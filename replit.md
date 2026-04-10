@@ -45,7 +45,7 @@ Preferred communication style: Simple, everyday language.
 
 ### Keyboard Shortcuts
 - **Transport**: Space = Play/Stop, R = Record, Escape = Stop.
-- **Navigation**: 1-9 = Select Part, [ = Rewind (bar 1), ] = Forward (next bar).
+- **Navigation**: 1-9, 0 = Select Part 1-10, [ = Rewind (bar 1 / prev song step), ] = Forward (next bar / next song step).
 - **Editing**: Ctrl+Z = Undo, Ctrl+Shift+Z / Ctrl+Y = Redo.
 - **Tracks**: Double-click track button to rename.
 
