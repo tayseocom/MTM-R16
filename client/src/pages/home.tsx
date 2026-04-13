@@ -1155,10 +1155,12 @@ export default function Home() {
         open={pianoRollOpen}
         onOpenChange={setPianoRollOpen}
         trackNumber={selectedTracks[0] || 1}
+        trackName={project.parts[project.currentPart]?.tracks[(selectedTracks[0] || 1) - 1]?.name ?? `Track ${selectedTracks[0] || 1}`}
         events={getCurrentTrackEvents()}
         onEventsChange={handlePianoRollEventsChange}
         currentPosition={currentPosition}
         liveNotes={liveNotes}
+        partLength={project.parts[project.currentPart]?.length ?? 4}
       />
 
       <SongModeDialog
