@@ -17,11 +17,11 @@ Preferred communication style: Simple, everyday language.
 - **State Management**: React hooks for UI; sequencer engine maintains its own state.
 - **Routing**: Wouter for client-side routing.
 
-### Backend
-- **Server**: Minimal Express.js server (currently with placeholder routes).
-- **Development**: Vite integration for HMR.
-- **Storage Layer**: Abstract `IStorage` with in-memory implementation. Drizzle ORM schema defined for PostgreSQL, but `localStorage` is used for client-side persistence.
-- **API**: RESTful endpoints under `/api` (to be implemented).
+### Architecture
+- **Pure SPA**: No backend server. Vite serves the app directly in development; static build for production.
+- **Storage**: 100% client-side via `localStorage` (JSON serialization).
+- **Development**: `npx vite` with HMR on port 5000.
+- **Deployment**: Static site deployment (`vite build` → `dist/`).
 
 ### Core Sequencer Engine
 - **Audio Timing**: `AudioClock` class uses AudioWorklet for sub-2ms jitter precision; falls back to JavaScript intervals.
@@ -60,7 +60,6 @@ Preferred communication style: Simple, everyday language.
 
 ### State Persistence
 - **Client-Side**: `localStorage` for project saving/loading (JSON).
-- **Database**: Drizzle ORM schema is prepared for a PostgreSQL backend.
 
 ### Timing Architecture
 - **AudioWorklet Processor**: `audio-clock-processor.js` runs on an audio thread for precise timing, emitting tick/beat/bar events and handling metronome clicks.
@@ -123,23 +122,14 @@ Targets Chromium, Edge, Safari; requires Web MIDI API, Web Audio API, and `local
 ### React Ecosystem
 - **React 18**: UI framework.
 - **Wouter**: Lightweight routing.
-- **TanStack React Query**: Data fetching (minimal).
-- **React Hook Form**: Form management.
 
 ### Build Tools
 - **Vite**: Development and build tool.
 - **TypeScript**: Type safety.
-- **esbuild**: Fast JavaScript bundler.
 - **PostCSS**: CSS processing.
 
-### Database (Infrastructure Ready)
-- **Drizzle ORM**: TypeScript ORM.
-- **Drizzle Kit**: Schema management.
-- **@neondatabase/serverless**: PostgreSQL driver.
-
 ### Validation & Type Safety
-- **Zod**: Schema validation.
-- **drizzle-zod**: Drizzle to Zod validation.
+- **Zod**: Schema validation (used in `shared/schema.ts`).
 
 ### Utilities
 - **date-fns**: Date manipulation.
