@@ -46,6 +46,8 @@ export default function Home() {
   const [selectedOutput, setSelectedOutput] = useState<string>('');
   const [midiReady, setMidiReady] = useState(false);
   const [midiSupported, setMidiSupported] = useState(() => midiManager.isSupported());
+  const [initializing, setInitializing] = useState(true);
+  const wasPlayingBeforeHideRef = useRef<{ state: TransportState; tick: number; tracks: number[]; song: string | null } | null>(null);
   const [midiEchoEnabled, setMidiEchoEnabled] = useState(false);
   const [clockMode, setClockMode] = useState<'off' | 'send' | 'receive'>('off');
   const [midiFilter, setMidiFilter] = useState<MidiFilterSettings>(DEFAULT_MIDI_FILTER);
@@ -101,6 +103,8 @@ export default function Home() {
       updateDevices();
       setTempo(sequencerEngine.getProject().tempo);
       sequencerEngine.setMetronome(metroEnabled);
+    }).finally(() => {
+      setInitializing(false);
     });
 
     // Set up MIDI input listener for live notes visualization
@@ -185,22 +189,47 @@ export default function Home() {
     sequencerEngine.setOutput(output || null);
   };
 
-  // Pause playback when the browser tab becomes hidden to prevent timing
-  // drift from throttled timers and stuck notes from suspended audio.
+  // Pause/resume playback on tab visibility change to prevent timing drift
+  // from throttled timers and stuck notes from suspended audio. When the
+  // tab returns, playback resumes from the same bar.
   useEffect(() => {
     const handleVisibility = () => {
-      if (document.hidden && (transportState === 'playing' || transportState === 'recording')) {
-        if (currentSong) songPlayer.stop();
-        sequencerEngine.stop();
-        setTransportState('stopped');
-        setPlayingTracks([]);
-        setArmedTracks([]);
-        showLcdMessage('PAUSED: TAB HIDDEN');
+      if (document.hidden) {
+        if (transportState === 'playing' || transportState === 'recording') {
+          wasPlayingBeforeHideRef.current = {
+            state: transportState,
+            tick: sequencerEngine.getCurrentTick(),
+            tracks: [...selectedTracks],
+            song: currentSong,
+          };
+          if (currentSong) songPlayer.stop();
+          sequencerEngine.stop();
+          setTransportState('stopped');
+          setPlayingTracks([]);
+          setArmedTracks([]);
+          showLcdMessage('PAUSED: TAB HIDDEN');
+        }
+      } else {
+        const snap = wasPlayingBeforeHideRef.current;
+        wasPlayingBeforeHideRef.current = null;
+        if (snap && snap.state === 'playing') {
+          if (snap.song) {
+            songPlayer.play(snap.song);
+            setTransportState('playing');
+            const allTracks = Array.from({ length: 16 }, (_, i) => i + 1);
+            setPlayingTracks(allTracks);
+          } else {
+            sequencerEngine.startPlayback(snap.tracks);
+            setTransportState('playing');
+            setPlayingTracks([...snap.tracks]);
+          }
+          showLcdMessage('RESUMED');
+        }
       }
     };
     document.addEventListener('visibilitychange', handleVisibility);
     return () => document.removeEventListener('visibilitychange', handleVisibility);
-  }, [transportState, currentSong, showLcdMessage]);
+  }, [transportState, currentSong, selectedTracks, showLcdMessage]);
 
   // Auto-select first available output
   useEffect(() => {
@@ -983,6 +1012,19 @@ export default function Home() {
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [handleUndo, handleRedo, transportState, editMode, handlePlay, handleStop, handleRecord, handleRewind, handleForward, handleTrackClick, showLcdMessage, toast]);
+
+  if (initializing) {
+    return (
+      <div className="min-h-screen bg-background flex items-center justify-center p-6" data-testid="loading-screen">
+        <div className="text-center space-y-3">
+          <div className="text-4xl font-bold text-primary font-mono tracking-wider">MTM-R16</div>
+          <div className="text-sm text-muted-foreground font-mono animate-pulse">
+            Initializing audio &amp; MIDI…
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-background p-4 md:p-8">
