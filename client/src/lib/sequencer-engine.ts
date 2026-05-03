@@ -100,7 +100,11 @@ export class SequencerEngine {
       this.midiInputListeners.forEach(listener => listener(event));
     });
     
-    return clockReady && midiReady;
+    // Return MIDI readiness only; audio clock is required and assumed initialized.
+    // This lets the UI decide what to enable/disable based on MIDI availability
+    // (playback/editor still work without MIDI hardware).
+    void clockReady;
+    return midiReady;
   }
 
   onRecordBufferUpdate(listener: RecordBufferUpdateListener) {

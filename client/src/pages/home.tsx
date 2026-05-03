@@ -409,10 +409,6 @@ export default function Home() {
   }, [showLcdMessage, currentSong]);
 
   const handlePlay = useCallback(() => {
-    if (!midiReady) {
-      toast({ title: 'No MIDI', description: 'Open in Chrome/Edge with MIDI devices connected.' });
-      return;
-    }
     if (resumeHint && transportState === 'stopped') {
       handleResumeFromHint();
       return;
@@ -440,7 +436,7 @@ export default function Home() {
         setPlayingTracks([...selectedTracks]);
       }
     }
-  }, [midiReady, transportState, currentSong, selectedTracks, toast, resumeHint, handleResumeFromHint]);
+  }, [transportState, currentSong, selectedTracks, resumeHint, handleResumeFromHint]);
 
   const handleStop = useCallback(() => {
     if (currentSong) {
@@ -454,8 +450,11 @@ export default function Home() {
   }, [currentSong]);
 
   const handleRecord = useCallback(() => {
-    if (!midiReady) {
-      toast({ title: 'No MIDI', description: 'Open in Chrome/Edge with MIDI devices connected.' });
+    if (!midiReady || midiDevices.inputs.length === 0) {
+      toast({
+        title: 'Recording unavailable',
+        description: 'Connect a MIDI input device to record. You can still edit notes in the piano roll.',
+      });
       return;
     }
     if (transportState === 'recording') {
@@ -511,7 +510,7 @@ export default function Home() {
         setTransportState('recording');
       }, 2000);
     }
-  }, [midiReady, transportState, armedTracks, primaryTrack, toast]);
+  }, [midiReady, midiDevices.inputs.length, transportState, armedTracks, primaryTrack, toast]);
 
   const handleTrackClick = (trackNum: number, shiftKey: boolean = false) => {
     if (editMode === 'merge' || editMode === 'copy') {
@@ -906,9 +905,14 @@ export default function Home() {
     const part = sequencerEngine.getCurrentPart();
     const recordedTracks = part.tracks.filter(t => t.events.length > 0).length;
     if (!midiReady) {
-      return recordedTracks > 0 
-        ? `${recordedTracks} TRACK${recordedTracks === 1 ? '' : 'S'} [DEMO]`
-        : 'NO MIDI - DEMO MODE';
+      return recordedTracks > 0
+        ? `${recordedTracks} TRACK${recordedTracks === 1 ? '' : 'S'} [NO MIDI]`
+        : 'NO MIDI - EDITOR ONLY';
+    }
+    if (midiDevices.inputs.length === 0) {
+      return recordedTracks > 0
+        ? `${recordedTracks} TRACK${recordedTracks === 1 ? '' : 'S'} - NO INPUT`
+        : 'NO MIDI INPUT - EDIT TO RECORD';
     }
     if (recordedTracks === 0) return 'NO TRACKS RECORDED';
     return `${recordedTracks} TRACK${recordedTracks === 1 ? '' : 'S'} RECORDED`;
