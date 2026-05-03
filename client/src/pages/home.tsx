@@ -53,6 +53,10 @@ export default function Home() {
   const [tempoInput, setTempoInput] = useState('');
   const [lengthPopoverOpen, setLengthPopoverOpen] = useState(false);
   const [lengthInput, setLengthInput] = useState('');
+  const [namePopoverOpen, setNamePopoverOpen] = useState(false);
+  const [nameInput, setNameInput] = useState('');
+  const [midiChanPopoverOpen, setMidiChanPopoverOpen] = useState(false);
+  const [loadSavePopoverOpen, setLoadSavePopoverOpen] = useState(false);
   const { toast } = useToast();
   const tempoInputRef = useRef<HTMLInputElement>(null);
   const lengthInputRef = useRef<HTMLInputElement>(null);
@@ -433,6 +437,22 @@ export default function Home() {
       const part = sequencerEngine.getCurrentPart();
       setLengthInput(part.length.toString());
       setLengthPopoverOpen(true);
+      return;
+    }
+
+    if (mode === 'name') {
+      setNameInput(sequencerEngine.getProject().name || '');
+      setNamePopoverOpen(true);
+      return;
+    }
+
+    if (mode === 'midi_chan') {
+      setMidiChanPopoverOpen(true);
+      return;
+    }
+
+    if (mode === 'load') {
+      setLoadSavePopoverOpen(true);
       return;
     }
 
@@ -835,6 +855,30 @@ export default function Home() {
     input.click();
   };
 
+  const handleNameSubmit = () => {
+    const newName = nameInput.trim();
+    if (newName) {
+      const proj = sequencerEngine.getProject();
+      const oldName = proj.name;
+      proj.name = newName;
+      setProject(structuredClone(proj));
+      saveToLocalStorage();
+      toast({ title: 'Project Renamed', description: `"${oldName}" → "${newName}"` });
+    }
+    setNamePopoverOpen(false);
+  };
+
+  const handleTrackChannelChange = (trackId: number, channel: number) => {
+    const part = sequencerEngine.getCurrentPart();
+    const track = part.tracks.find(t => t.id === trackId);
+    if (track) {
+      track.channel = channel;
+      setProject(structuredClone(sequencerEngine.getProject()));
+      saveToLocalStorage();
+      toast({ title: `Track ${trackId}`, description: `MIDI channel set to ${channel + 1}` });
+    }
+  };
+
   const handleProjectChange = (updatedProject: Project) => {
     sequencerEngine.loadProject(updatedProject);
     setProject(updatedProject);
@@ -1157,6 +1201,85 @@ export default function Home() {
                 autoFocus
               />
               <Button onClick={handleLengthSubmit} data-testid="button-length-ok">OK</Button>
+            </div>
+          </div>
+        </PopoverContent>
+      </Popover>
+
+      <Popover open={namePopoverOpen} onOpenChange={setNamePopoverOpen}>
+        <PopoverTrigger asChild>
+          <span className="hidden" />
+        </PopoverTrigger>
+        <PopoverContent className="w-72 p-4" align="center" side="top">
+          <div className="space-y-3">
+            <label className="text-sm font-medium text-foreground">Project Name</label>
+            <div className="flex gap-2">
+              <Input
+                value={nameInput}
+                onChange={(e) => setNameInput(e.target.value)}
+                onKeyDown={(e) => { if (e.key === 'Enter') handleNameSubmit(); }}
+                data-testid="input-project-name"
+                autoFocus
+              />
+              <Button onClick={handleNameSubmit} data-testid="button-name-ok">OK</Button>
+            </div>
+          </div>
+        </PopoverContent>
+      </Popover>
+
+      <Popover open={midiChanPopoverOpen} onOpenChange={setMidiChanPopoverOpen}>
+        <PopoverTrigger asChild>
+          <span className="hidden" />
+        </PopoverTrigger>
+        <PopoverContent className="w-96 p-4 max-h-[70vh] overflow-y-auto" align="center" side="top">
+          <div className="space-y-3">
+            <label className="text-sm font-medium text-foreground">MIDI Output Channel per Track</label>
+            <div className="grid grid-cols-2 gap-2">
+              {project.parts[project.currentPart]?.tracks.map((track) => (
+                <div key={track.id} className="flex items-center gap-2">
+                  <span className="text-xs text-muted-foreground w-16 shrink-0">TRK {track.id}</span>
+                  <select
+                    className="flex-1 h-9 rounded-md border border-border bg-background px-2 text-sm"
+                    value={track.channel}
+                    onChange={(e) => handleTrackChannelChange(track.id, parseInt(e.target.value))}
+                    data-testid={`select-midi-channel-${track.id}`}
+                  >
+                    {Array.from({ length: 16 }, (_, i) => (
+                      <option key={i} value={i}>CH {i + 1}</option>
+                    ))}
+                  </select>
+                </div>
+              ))}
+            </div>
+            <div className="flex justify-end">
+              <Button onClick={() => setMidiChanPopoverOpen(false)} data-testid="button-midi-chan-done">Done</Button>
+            </div>
+          </div>
+        </PopoverContent>
+      </Popover>
+
+      <Popover open={loadSavePopoverOpen} onOpenChange={setLoadSavePopoverOpen}>
+        <PopoverTrigger asChild>
+          <span className="hidden" />
+        </PopoverTrigger>
+        <PopoverContent className="w-72 p-4" align="center" side="top">
+          <div className="space-y-3">
+            <label className="text-sm font-medium text-foreground">Load / Save Project</label>
+            <div className="flex flex-col gap-2">
+              <Button
+                onClick={() => { setLoadSavePopoverOpen(false); handleLoadProject(); }}
+                data-testid="button-loadsave-load"
+              >
+                <Upload className="w-4 h-4 mr-2" />
+                Load from File
+              </Button>
+              <Button
+                onClick={() => { setLoadSavePopoverOpen(false); handleSaveProject(); }}
+                data-testid="button-loadsave-save"
+              >
+                <Download className="w-4 h-4 mr-2" />
+                Save to File
+              </Button>
             </div>
           </div>
         </PopoverContent>
