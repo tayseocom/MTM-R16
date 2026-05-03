@@ -47,7 +47,7 @@ export default function Home() {
   const [midiReady, setMidiReady] = useState(false);
   const [midiSupported, setMidiSupported] = useState(() => midiManager.isSupported());
   const [initializing, setInitializing] = useState(true);
-  const wasPlayingBeforeHideRef = useRef<{ state: TransportState; tick: number; tracks: number[]; song: string | null } | null>(null);
+  const wasPlayingBeforeHideRef = useRef<{ state: TransportState; tick: number; tracks: number[]; armed: number[]; song: string | null } | null>(null);
   const [midiEchoEnabled, setMidiEchoEnabled] = useState(false);
   const [clockMode, setClockMode] = useState<'off' | 'send' | 'receive'>('off');
   const [midiFilter, setMidiFilter] = useState<MidiFilterSettings>(DEFAULT_MIDI_FILTER);
@@ -200,26 +200,32 @@ export default function Home() {
             state: transportState,
             tick: sequencerEngine.getCurrentTick(),
             tracks: [...selectedTracks],
+            armed: [...armedTracks],
             song: currentSong,
           };
           if (currentSong) songPlayer.stop();
           sequencerEngine.stop();
           setTransportState('stopped');
           setPlayingTracks([]);
-          setArmedTracks([]);
           showLcdMessage('PAUSED: TAB HIDDEN');
         }
       } else {
         const snap = wasPlayingBeforeHideRef.current;
         wasPlayingBeforeHideRef.current = null;
-        if (snap && snap.state === 'playing') {
-          if (snap.song) {
+        if (snap && (snap.state === 'playing' || snap.state === 'recording')) {
+          if (snap.state === 'recording') {
+            const recTracks = snap.armed.length > 0 ? snap.armed : [primaryTrack];
+            sequencerEngine.startRecordingAtTick(recTracks, snap.tick);
+            setTransportState('recording');
+            setPlayingTracks([...snap.tracks]);
+            setArmedTracks(snap.armed);
+          } else if (snap.song) {
             songPlayer.play(snap.song);
             setTransportState('playing');
             const allTracks = Array.from({ length: 16 }, (_, i) => i + 1);
             setPlayingTracks(allTracks);
           } else {
-            sequencerEngine.startPlayback(snap.tracks);
+            sequencerEngine.startPlayback(snap.tracks, snap.tick);
             setTransportState('playing');
             setPlayingTracks([...snap.tracks]);
           }
@@ -229,7 +235,7 @@ export default function Home() {
     };
     document.addEventListener('visibilitychange', handleVisibility);
     return () => document.removeEventListener('visibilitychange', handleVisibility);
-  }, [transportState, currentSong, selectedTracks, showLcdMessage]);
+  }, [transportState, currentSong, selectedTracks, armedTracks, primaryTrack, showLcdMessage]);
 
   // Auto-select first available output
   useEffect(() => {

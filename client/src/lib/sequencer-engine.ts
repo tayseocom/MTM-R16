@@ -447,16 +447,37 @@ export class SequencerEngine {
     this.pendingEventsByTrack.clear();
   }
 
-  startPlayback(trackIds?: number[]) {
+  startPlayback(trackIds?: number[], startTick: number = 0) {
     this.isPlaying = true;
-    this.currentTick = 0;
+    this.currentTick = startTick;
     this.schedulePlaybackEvents(trackIds);
+    audioClock.resetTick(startTick);
     audioClock.start();
-    
+
     // Start MIDI clock if in send mode
     if (this.clockMode === 'send') {
       midiManager.startClockSend(this.project.tempo, midiManager.getOutputs());
     }
+  }
+
+  startRecordingAtTick(trackIds: number[], startTick: number) {
+    // Resume recording from a specific tick (used by visibility resume).
+    this.isRecording = true;
+    this.isPlaying = true;
+    trackIds.forEach(id => {
+      this.recordingEvents.set(id, []);
+      this.activeNotesByTrack.set(id, new Map());
+    });
+    this.pendingEventsByTrack.clear();
+    this.lastEmitTime = 0;
+    this.currentTick = startTick;
+    const ticksPerBeat = 24;
+    const offsetSeconds = ((startTick / ticksPerBeat) / this.project.tempo) * 60;
+    this.recordStartTime = audioClock.getCurrentTime() - offsetSeconds;
+    this.schedulePlaybackEvents();
+    audioClock.resetTick(startTick);
+    audioClock.setMetronome(true);
+    audioClock.start();
   }
 
   updatePlayingTracks(trackIds: number[]) {
