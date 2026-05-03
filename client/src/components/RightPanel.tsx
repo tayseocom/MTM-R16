@@ -57,24 +57,28 @@ export default function RightPanel({
         onClick={onMidiEchoClick}
         active={midiEchoEnabled}
         led={midiEchoEnabled ? 'green' : 'off'}
+        tooltip="Route incoming MIDI directly to output"
       />
       <HardwareButton 
         label="METRO" 
         onClick={onMetroClick}
         active={metroEnabled}
         led={metroEnabled ? 'green' : 'off'}
+        tooltip="Toggle metronome click during playback"
       />
       <HardwareButton 
         label={getClockLabel()} 
         onClick={onClockClick}
         active={clockMode !== 'off'}
         led={getClockLED() as 'red' | 'green' | 'amber' | 'orange' | 'off'}
+        tooltip="Cycle MIDI clock sync: Off / Send / Receive"
       />
       <HardwareButton 
         label="MIDI FILTER" 
-        onClick={onMidiFilterClick}
-        active={midiFilterEnabled}
-        led={midiFilterEnabled ? 'green' : 'off'}
+        active={false}
+        led="off"
+        disabled
+        tooltip="Coming soon"
       />
       <HardwareButton 
         label="TEMPO" 

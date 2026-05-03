@@ -37,6 +37,7 @@ export default function ControlGrid({
         label="QUANT" 
         onClick={onQuantClick}
         active={activeMode === 'quantize'}
+        tooltip="Quantize: snap notes to nearest grid value"
       />
       <HardwareButton 
         label="LENGTH" 
@@ -67,11 +68,13 @@ export default function ControlGrid({
         label="TRANS" 
         onClick={onTransClick}
         active={activeMode === 'transpose'}
+        tooltip="Transpose selected tracks up or down"
       />
       <HardwareButton 
         label="MERGE" 
         onClick={onMergeClick}
         active={activeMode === 'merge'}
+        tooltip="Merge source track events into another track"
       />
       <HardwareButton 
         label="SONG" 
@@ -92,6 +95,7 @@ export default function ControlGrid({
         label="MIDI CHAN" 
         onClick={onMidiChanClick}
         active={activeMode === 'midi_chan'}
+        tooltip="Assign MIDI output channel per track"
       />
     </div>
   );

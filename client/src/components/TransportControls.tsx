@@ -25,12 +25,14 @@ export default function TransportControls({
         icon={<ChevronLeft className="w-5 h-5" />} 
         onClick={onRewind}
         dataTestId="button-rewind"
+        tooltip="Go to bar 1 (or previous song step)"
       />
       <HardwareButton 
         label=">>>" 
         icon={<ChevronRight className="w-5 h-5" />} 
         onClick={onForward}
         dataTestId="button-forward"
+        tooltip="Advance to next bar (or next song step)"
       />
       <HardwareButton 
         label="PLAY" 

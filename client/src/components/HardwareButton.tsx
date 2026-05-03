@@ -1,6 +1,7 @@
 import { cn } from "@/lib/utils";
 import { ReactNode } from "react";
 import LED from "./LED";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 
 interface HardwareButtonProps {
   label: string;
@@ -12,6 +13,8 @@ interface HardwareButtonProps {
   icon?: ReactNode;
   className?: string;
   dataTestId?: string;
+  tooltip?: string;
+  disabled?: boolean;
 }
 
 export default function HardwareButton({ 
@@ -23,7 +26,9 @@ export default function HardwareButton({
   variant = 'default',
   icon,
   className,
-  dataTestId
+  dataTestId,
+  tooltip,
+  disabled,
 }: HardwareButtonProps) {
   const variantClasses = {
     default: 'bg-card hover-elevate active-elevate-2',
@@ -32,13 +37,15 @@ export default function HardwareButton({
     record: 'bg-destructive/20 border-destructive/30 hover-elevate active-elevate-2',
   };
 
-  return (
+  const button = (
     <button
       onClick={onClick}
+      disabled={disabled}
       className={cn(
         "relative flex flex-col items-center justify-center gap-1 p-2 rounded-md border transition-all min-h-[2.5rem]",
         active && "ring-2 ring-accent",
         variantClasses[variant],
+        disabled && "opacity-40 cursor-not-allowed",
         className
       )}
       data-testid={dataTestId || `button-${label.toLowerCase().replace(/\s+/g, '-')}`}
@@ -51,5 +58,14 @@ export default function HardwareButton({
         {label}
       </span>
     </button>
+  );
+
+  if (!tooltip) return button;
+
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>{button}</TooltipTrigger>
+      <TooltipContent>{tooltip}</TooltipContent>
+    </Tooltip>
   );
 }

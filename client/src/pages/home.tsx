@@ -13,6 +13,7 @@ import { Download, Upload, Undo2, Redo2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { useToast } from '@/hooks/use-toast';
 import { midiManager } from '@/lib/midi';
 import { sequencerEngine } from '@/lib/sequencer-engine';
@@ -911,26 +912,36 @@ export default function Home() {
             <h2 className="text-4xl font-bold text-primary font-mono" data-testid="model">MTM-R16</h2>
           </div>
           <div className="flex gap-2 items-center">
-            <Button 
-              size="icon" 
-              variant="ghost" 
-              onClick={handleUndo}
-              disabled={!canUndo}
-              data-testid="button-undo"
-              aria-label="Undo"
-            >
-              <Undo2 className="w-4 h-4" />
-            </Button>
-            <Button 
-              size="icon" 
-              variant="ghost" 
-              onClick={handleRedo}
-              disabled={!canRedo}
-              data-testid="button-redo"
-              aria-label="Redo"
-            >
-              <Redo2 className="w-4 h-4" />
-            </Button>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button 
+                  size="icon" 
+                  variant="ghost" 
+                  onClick={handleUndo}
+                  disabled={!canUndo}
+                  data-testid="button-undo"
+                  aria-label="Undo"
+                >
+                  <Undo2 className="w-4 h-4" />
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>Undo (Ctrl+Z)</TooltipContent>
+            </Tooltip>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button 
+                  size="icon" 
+                  variant="ghost" 
+                  onClick={handleRedo}
+                  disabled={!canRedo}
+                  data-testid="button-redo"
+                  aria-label="Redo"
+                >
+                  <Redo2 className="w-4 h-4" />
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>Redo (Ctrl+Shift+Z)</TooltipContent>
+            </Tooltip>
             <FAQDialog />
             <Button 
               variant="default" 
