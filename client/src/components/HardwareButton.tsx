@@ -39,13 +39,13 @@ export default function HardwareButton({
 
   const button = (
     <button
-      onClick={onClick}
-      disabled={disabled}
+      onClick={disabled ? undefined : onClick}
+      aria-disabled={disabled || undefined}
       className={cn(
         "relative flex flex-col items-center justify-center gap-1 p-2 rounded-md border transition-all min-h-[2.5rem]",
         active && "ring-2 ring-accent",
         variantClasses[variant],
-        disabled && "opacity-40 cursor-not-allowed",
+        disabled && "opacity-40 cursor-not-allowed pointer-events-auto",
         className
       )}
       data-testid={dataTestId || `button-${label.toLowerCase().replace(/\s+/g, '-')}`}
