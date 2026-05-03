@@ -49,6 +49,8 @@ export default function HardwareButton({
         className
       )}
       data-testid={dataTestId || `button-${label.toLowerCase().replace(/\s+/g, '-')}`}
+      aria-label={tooltip ? `${label} — ${tooltip}` : label}
+      aria-pressed={active || undefined}
     >
       {led && (
         <LED color={led} pulse={ledPulse} className="absolute top-1 right-1" />

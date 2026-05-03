@@ -115,16 +115,31 @@ export class MIDIManager {
 
   sendMessage(output: MIDIOutput | null, data: Uint8Array, timestamp?: number) {
     if (!output) return;
-    output.send(data, timestamp);
+    try {
+      output.send(data, timestamp);
+    } catch (err) {
+      // Output may have been disconnected mid-playback. Swallow to keep
+      // the engine alive — caller will pick a new output via state change.
+      console.warn('MIDI send failed (output may be disconnected):', err);
+    }
   }
 
   allNotesOff() {
     this.outputs.forEach(output => {
-      for (let ch = 0; ch < 16; ch++) {
-        output.send([0xB0 + ch, 123, 0]);
-        output.send([0xB0 + ch, 64, 0]);
+      try {
+        for (let ch = 0; ch < 16; ch++) {
+          output.send([0xB0 + ch, 123, 0]); // All Notes Off
+          output.send([0xB0 + ch, 120, 0]); // All Sound Off
+          output.send([0xB0 + ch, 64, 0]);  // Sustain pedal off
+        }
+      } catch (err) {
+        console.warn('All Notes Off failed for output (may be disconnected):', err);
       }
     });
+  }
+
+  isSupported(): boolean {
+    return typeof navigator !== 'undefined' && typeof navigator.requestMIDIAccess === 'function';
   }
 }
 

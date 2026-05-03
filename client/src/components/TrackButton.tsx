@@ -72,6 +72,8 @@ export default function TrackButton({
         selected && "ring-2 ring-accent bg-accent/20"
       )}
       data-testid={`track-button-${trackNumber}`}
+      aria-label={`Track ${trackNumber}${trackName && trackName !== `Track ${trackNumber}` ? ` (${trackName})` : ''}${selected ? ', selected' : ''}${armed ? ', armed' : ''}${muted ? ', muted' : ''}${playing ? ', playing' : ''}`}
+      aria-pressed={selected}
     >
       {playing && (
         <div 

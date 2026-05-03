@@ -45,6 +45,7 @@ export default function Home() {
   const [selectedInput, setSelectedInput] = useState<string>('');
   const [selectedOutput, setSelectedOutput] = useState<string>('');
   const [midiReady, setMidiReady] = useState(false);
+  const [midiSupported, setMidiSupported] = useState(() => midiManager.isSupported());
   const [midiEchoEnabled, setMidiEchoEnabled] = useState(false);
   const [clockMode, setClockMode] = useState<'off' | 'send' | 'receive'>('off');
   const [midiFilter, setMidiFilter] = useState<MidiFilterSettings>(DEFAULT_MIDI_FILTER);
@@ -94,6 +95,7 @@ export default function Home() {
   }, [showLcdMessage]);
 
   useEffect(() => {
+    setMidiSupported(midiManager.isSupported());
     sequencerEngine.initialize().then((ready) => {
       setMidiReady(ready);
       updateDevices();
@@ -182,6 +184,23 @@ export default function Home() {
     const output = midiManager.getOutputs().find(d => d.id === deviceId);
     sequencerEngine.setOutput(output || null);
   };
+
+  // Pause playback when the browser tab becomes hidden to prevent timing
+  // drift from throttled timers and stuck notes from suspended audio.
+  useEffect(() => {
+    const handleVisibility = () => {
+      if (document.hidden && (transportState === 'playing' || transportState === 'recording')) {
+        if (currentSong) songPlayer.stop();
+        sequencerEngine.stop();
+        setTransportState('stopped');
+        setPlayingTracks([]);
+        setArmedTracks([]);
+        showLcdMessage('PAUSED: TAB HIDDEN');
+      }
+    };
+    document.addEventListener('visibilitychange', handleVisibility);
+    return () => document.removeEventListener('visibilitychange', handleVisibility);
+  }, [transportState, currentSong, showLcdMessage]);
 
   // Auto-select first available output
   useEffect(() => {
@@ -968,6 +987,18 @@ export default function Home() {
   return (
     <div className="min-h-screen bg-background p-4 md:p-8">
       <div className="max-w-7xl mx-auto space-y-6">
+        {!midiSupported && (
+          <div
+            className="border border-amber-500/40 bg-amber-500/10 text-amber-200 rounded-md px-4 py-3 text-sm"
+            role="alert"
+            data-testid="banner-midi-unsupported"
+          >
+            <strong className="font-semibold">Web MIDI not available.</strong>{' '}
+            Your browser doesn't support the Web MIDI API, so live MIDI input and
+            output are disabled. You can still edit and arrange parts. For full
+            functionality, open this page in Chrome, Edge, or Opera on desktop.
+          </div>
+        )}
         {/* Header */}
         <div className="flex items-center justify-between">
           <div>
