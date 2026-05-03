@@ -9,7 +9,7 @@ import MIDIDeviceSelect from '@/components/MIDIDeviceSelect';
 import { FAQDialog } from '@/components/FAQDialog';
 import PianoRollDialog from '@/components/PianoRollDialog';
 import SongModeDialog from '@/components/SongModeDialog';
-import { Download, Upload, Undo2, Redo2 } from 'lucide-react';
+import { Download, Upload, Undo2, Redo2, Play as PlayIcon, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
@@ -48,6 +48,15 @@ export default function Home() {
   const [midiSupported, setMidiSupported] = useState(() => midiManager.isSupported());
   const [initializing, setInitializing] = useState(true);
   const wasPlayingBeforeHideRef = useRef<{ state: TransportState; tick: number; tracks: number[]; armed: number[]; song: string | null; songStep: number } | null>(null);
+  const [autoResumeOnReturn, setAutoResumeOnReturn] = useState<boolean>(() => {
+    try {
+      const v = localStorage.getItem('mtm-auto-resume');
+      return v === null ? true : v === 'true';
+    } catch {
+      return true;
+    }
+  });
+  const [resumeHint, setResumeHint] = useState<{ tick: number; bar: number; tracks: number[]; armed: number[]; song: string | null; songStep: number; state: TransportState } | null>(null);
   const [midiEchoEnabled, setMidiEchoEnabled] = useState(false);
   const [clockMode, setClockMode] = useState<'off' | 'send' | 'receive'>('off');
   const [midiFilter, setMidiFilter] = useState<MidiFilterSettings>(DEFAULT_MIDI_FILTER);
@@ -221,32 +230,82 @@ export default function Home() {
         const snap = wasPlayingBeforeHideRef.current;
         wasPlayingBeforeHideRef.current = null;
         if (snap && (snap.state === 'playing' || snap.state === 'recording')) {
-          if (snap.song) {
-            // Restore prior song step before kicking off playback so we
-            // resume on the same step (not the start of the song).
-            songPlayer.play(snap.song);
-            songPlayer.selectStep(snap.songStep);
-            setTransportState('playing');
-            const allTracks = Array.from({ length: 16 }, (_, i) => i + 1);
-            setPlayingTracks(allTracks);
-          } else if (snap.state === 'recording') {
-            const recTracks = snap.armed.length > 0 ? snap.armed : [primaryTrack];
-            sequencerEngine.startRecordingAtTick(recTracks, snap.tick);
-            setTransportState('recording');
-            setPlayingTracks([...snap.tracks]);
-            setArmedTracks(snap.armed);
+          if (autoResumeOnReturn) {
+            if (snap.song) {
+              // Restore prior song step before kicking off playback so we
+              // resume on the same step (not the start of the song).
+              songPlayer.play(snap.song);
+              songPlayer.selectStep(snap.songStep);
+              setTransportState('playing');
+              const allTracks = Array.from({ length: 16 }, (_, i) => i + 1);
+              setPlayingTracks(allTracks);
+            } else if (snap.state === 'recording') {
+              const recTracks = snap.armed.length > 0 ? snap.armed : [primaryTrack];
+              sequencerEngine.startRecordingAtTick(recTracks, snap.tick);
+              setTransportState('recording');
+              setPlayingTracks([...snap.tracks]);
+              setArmedTracks(snap.armed);
+            } else {
+              sequencerEngine.startPlayback(snap.tracks, snap.tick);
+              setTransportState('playing');
+              setPlayingTracks([...snap.tracks]);
+            }
+            showLcdMessage('RESUMED');
           } else {
-            sequencerEngine.startPlayback(snap.tracks, snap.tick);
-            setTransportState('playing');
-            setPlayingTracks([...snap.tracks]);
+            // Auto-stop mode: remember position and prompt user via banner.
+            const ticksPerBar = 24 * 4;
+            const bar = Math.floor(snap.tick / ticksPerBar) + 1;
+            setResumeHint({
+              tick: snap.tick,
+              bar,
+              tracks: snap.tracks,
+              armed: snap.armed,
+              song: snap.song,
+              songStep: snap.songStep,
+              state: snap.state,
+            });
+            showLcdMessage(`PAUSED AT BAR ${bar}`);
           }
-          showLcdMessage('RESUMED');
         }
       }
     };
     document.addEventListener('visibilitychange', handleVisibility);
     return () => document.removeEventListener('visibilitychange', handleVisibility);
-  }, [transportState, currentSong, selectedTracks, armedTracks, primaryTrack, showLcdMessage]);
+  }, [transportState, currentSong, selectedTracks, armedTracks, primaryTrack, autoResumeOnReturn, showLcdMessage]);
+
+  const toggleAutoResume = useCallback(() => {
+    setAutoResumeOnReturn((prev) => {
+      const next = !prev;
+      try {
+        localStorage.setItem('mtm-auto-resume', String(next));
+      } catch {}
+      return next;
+    });
+  }, []);
+
+  const handleResumeFromHint = useCallback(() => {
+    const hint = resumeHint;
+    if (!hint) return;
+    setResumeHint(null);
+    if (hint.song) {
+      songPlayer.play(hint.song);
+      songPlayer.selectStep(hint.songStep);
+      setTransportState('playing');
+      const allTracks = Array.from({ length: 16 }, (_, i) => i + 1);
+      setPlayingTracks(allTracks);
+    } else if (hint.state === 'recording') {
+      const recTracks = hint.armed.length > 0 ? hint.armed : [primaryTrack];
+      sequencerEngine.startRecordingAtTick(recTracks, hint.tick);
+      setTransportState('recording');
+      setPlayingTracks([...hint.tracks]);
+      setArmedTracks(hint.armed);
+    } else {
+      sequencerEngine.startPlayback(hint.tracks, hint.tick);
+      setTransportState('playing');
+      setPlayingTracks([...hint.tracks]);
+    }
+    showLcdMessage(`RESUMED: BAR ${hint.bar}`);
+  }, [resumeHint, primaryTrack, showLcdMessage]);
 
   // Auto-select first available output
   useEffect(() => {
@@ -354,6 +413,10 @@ export default function Home() {
       toast({ title: 'No MIDI', description: 'Open in Chrome/Edge with MIDI devices connected.' });
       return;
     }
+    if (resumeHint && transportState === 'stopped') {
+      handleResumeFromHint();
+      return;
+    }
     if (transportState === 'playing') {
       if (currentSong) {
         songPlayer.stop();
@@ -377,7 +440,7 @@ export default function Home() {
         setPlayingTracks([...selectedTracks]);
       }
     }
-  }, [midiReady, transportState, currentSong, selectedTracks, toast]);
+  }, [midiReady, transportState, currentSong, selectedTracks, toast, resumeHint, handleResumeFromHint]);
 
   const handleStop = useCallback(() => {
     if (currentSong) {
@@ -387,6 +450,7 @@ export default function Home() {
     setTransportState('stopped');
     setPlayingTracks([]);
     setArmedTracks([]);
+    setResumeHint(null);
   }, [currentSong]);
 
   const handleRecord = useCallback(() => {
@@ -1046,6 +1110,38 @@ export default function Home() {
   return (
     <div className="min-h-screen bg-background p-4 md:p-8">
       <div className="max-w-7xl mx-auto space-y-6">
+        {resumeHint && (
+          <div
+            className="border border-primary/40 bg-primary/10 text-foreground rounded-md px-4 py-3 text-sm flex items-center justify-between gap-3"
+            role="status"
+            data-testid="banner-resume-hint"
+          >
+            <div className="font-mono">
+              <strong className="font-semibold">Tab paused</strong> — press Play to resume from{' '}
+              <span data-testid="text-resume-bar">bar {resumeHint.bar}</span>.
+            </div>
+            <div className="flex items-center gap-2 shrink-0">
+              <Button
+                size="sm"
+                variant="default"
+                onClick={handleResumeFromHint}
+                data-testid="button-resume-hint"
+              >
+                <PlayIcon className="w-3 h-3 mr-1" />
+                Resume
+              </Button>
+              <Button
+                size="icon"
+                variant="ghost"
+                onClick={() => setResumeHint(null)}
+                aria-label="Dismiss"
+                data-testid="button-dismiss-resume-hint"
+              >
+                <X className="w-4 h-4" />
+              </Button>
+            </div>
+          </div>
+        )}
         {!midiSupported && (
           <div
             className="border border-amber-500/40 bg-amber-500/10 text-amber-200 rounded-md px-4 py-3 text-sm"
@@ -1096,6 +1192,25 @@ export default function Home() {
                 </Button>
               </TooltipTrigger>
               <TooltipContent>Redo (Ctrl+Shift+Z)</TooltipContent>
+            </Tooltip>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  onClick={toggleAutoResume}
+                  className={`toggle-elevate font-mono text-xs ${autoResumeOnReturn ? 'toggle-elevated' : ''}`}
+                  data-testid="button-auto-resume-toggle"
+                  aria-pressed={autoResumeOnReturn}
+                >
+                  {autoResumeOnReturn ? 'AUTO-RESUME: ON' : 'AUTO-RESUME: OFF'}
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>
+                {autoResumeOnReturn
+                  ? 'Tab returns automatically resume playback'
+                  : 'Tab returns wait for Play to resume'}
+              </TooltipContent>
             </Tooltip>
             <FAQDialog />
             <Button 
