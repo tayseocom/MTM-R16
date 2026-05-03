@@ -1,4 +1,4 @@
-import type { MIDIEvent, Track, Part, Project, TrackMask } from '@shared/schema';
+import type { MIDIEvent, Track, Part, Project, TrackMask, MidiFilterSettings } from '@shared/schema';
 import { audioClock } from './audio-clock';
 import { midiManager } from './midi';
 import { metronome } from './metronome';
@@ -20,6 +20,13 @@ export class SequencerEngine {
   private quantizeValue = 0; // 0 = off, 1/4, 1/8, 1/16, etc.
   private midiThruEnabled = false;
   private clockMode: 'off' | 'send' | 'receive' = 'off';
+  private midiFilter: MidiFilterSettings = {
+    note: false,
+    cc: false,
+    pitchBend: false,
+    aftertouch: false,
+    programChange: false,
+  };
   
   private recordBufferUpdateListeners: RecordBufferUpdateListener[] = [];
   private takeCommittedListeners: TakeCommittedListener[] = [];
@@ -134,6 +141,33 @@ export class SequencerEngine {
     this.midiThruEnabled = enabled;
   }
 
+  setMidiFilter(filter: MidiFilterSettings) {
+    this.midiFilter = { ...filter };
+  }
+
+  getMidiFilter(): MidiFilterSettings {
+    return { ...this.midiFilter };
+  }
+
+  private isMessageFiltered(command: number): boolean {
+    switch (command) {
+      case 0x80: // Note Off
+      case 0x90: // Note On
+        return this.midiFilter.note;
+      case 0xA0: // Polyphonic Aftertouch
+      case 0xD0: // Channel Aftertouch
+        return this.midiFilter.aftertouch;
+      case 0xB0: // Control Change
+        return this.midiFilter.cc;
+      case 0xC0: // Program Change
+        return this.midiFilter.programChange;
+      case 0xE0: // Pitch Bend
+        return this.midiFilter.pitchBend;
+      default:
+        return false;
+    }
+  }
+
   setClockMode(mode: 'off' | 'send' | 'receive') {
     this.clockMode = mode;
     
@@ -225,7 +259,12 @@ export class SequencerEngine {
     if (!this.isRecording) {
       return;
     }
-    
+
+    // Apply MIDI filter: skip recording for filtered message types
+    if (this.isMessageFiltered(command)) {
+      return;
+    }
+
     const timestamp = audioClock.getCurrentTime() - this.recordStartTime;
     let midiEvent: MIDIEvent | null = null;
 
@@ -671,6 +710,15 @@ export class SequencerEngine {
   loadProject(project: Project) {
     this.project = project;
     this.setTempo(project.tempo);
+    if (project.midiFilter) {
+      this.setMidiFilter({
+        note: !!project.midiFilter.note,
+        cc: !!project.midiFilter.cc,
+        pitchBend: !!project.midiFilter.pitchBend,
+        aftertouch: !!project.midiFilter.aftertouch,
+        programChange: !!project.midiFilter.programChange,
+      });
+    }
   }
 
   copyPart(sourceId: number, destId: number) {

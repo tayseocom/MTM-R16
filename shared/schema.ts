@@ -61,6 +61,7 @@ export interface Project {
   songs: Song[];
   currentPart: number;
   currentSong: string | null;  // Song.id
+  midiFilter?: MidiFilterSettings;
 }
 
 export const projectSchema = z.object({
@@ -71,6 +72,14 @@ export const projectSchema = z.object({
   currentPart: z.number(),
   currentSong: z.number().nullable(),
 });
+
+export interface MidiFilterSettings {
+  note: boolean;
+  cc: boolean;
+  pitchBend: boolean;
+  aftertouch: boolean;
+  programChange: boolean;
+}
 
 export type TransportState = 'stopped' | 'playing' | 'recording' | 'countIn';
 export type EditMode = 'none' | 'quantize' | 'copy' | 'merge' | 'erase' | 'transpose' | 'name' | 'edit' | 'part' | 'length' | 'song' | 'load' | 'save' | 'midi_chan';

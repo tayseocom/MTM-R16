@@ -19,7 +19,15 @@ import { midiManager } from '@/lib/midi';
 import { sequencerEngine } from '@/lib/sequencer-engine';
 import { songPlayer } from '@/lib/song-player';
 import { undoManager, cloneEvents } from '@/lib/undo-manager';
-import type { TransportState, EditMode, Project, MIDIEvent } from '@shared/schema';
+import type { TransportState, EditMode, Project, MIDIEvent, MidiFilterSettings } from '@shared/schema';
+
+const DEFAULT_MIDI_FILTER: MidiFilterSettings = {
+  note: false,
+  cc: false,
+  pitchBend: false,
+  aftertouch: false,
+  programChange: false,
+};
 
 export default function Home() {
   const [transportState, setTransportState] = useState<TransportState>('stopped');
@@ -39,6 +47,7 @@ export default function Home() {
   const [midiReady, setMidiReady] = useState(false);
   const [midiEchoEnabled, setMidiEchoEnabled] = useState(false);
   const [clockMode, setClockMode] = useState<'off' | 'send' | 'receive'>('off');
+  const [midiFilter, setMidiFilter] = useState<MidiFilterSettings>(DEFAULT_MIDI_FILTER);
   const [pianoRollOpen, setPianoRollOpen] = useState(false);
   const [songModeOpen, setSongModeOpen] = useState(false);
   const [currentPosition, setCurrentPosition] = useState(0);
@@ -127,6 +136,12 @@ export default function Home() {
         setTempo(loadedProject.tempo);
         setCurrentPart(loadedProject.currentPart + 1);
         setCurrentSong(loadedProject.currentSong || null);
+        const loadedFilter: MidiFilterSettings = {
+          ...DEFAULT_MIDI_FILTER,
+          ...(loadedProject.midiFilter || {}),
+        };
+        setMidiFilter(loadedFilter);
+        sequencerEngine.setMidiFilter(loadedFilter);
         undoManager.clear();
       } catch (err) {
         console.error('Failed to load saved project:', err);
@@ -842,6 +857,12 @@ export default function Home() {
             setTempo(loadedProject.tempo || 120);
             setCurrentPart((loadedProject.currentPart || 0) + 1);
             setCurrentSong(loadedProject.currentSong || null);
+            const loadedFilter: MidiFilterSettings = {
+              ...DEFAULT_MIDI_FILTER,
+              ...(loadedProject.midiFilter || {}),
+            };
+            setMidiFilter(loadedFilter);
+            sequencerEngine.setMidiFilter(loadedFilter);
             undoManager.clear();
             saveToLocalStorage();
             toast({ title: 'Loaded', description: 'Project loaded from file' });
@@ -1046,7 +1067,13 @@ export default function Home() {
                 setClockMode(nextMode);
                 sequencerEngine.setClockMode(nextMode);
               }}
-              onMidiFilterClick={() => console.log('MIDI Filter toggled')}
+              midiFilter={midiFilter}
+              onMidiFilterChange={(next) => {
+                setMidiFilter(next);
+                sequencerEngine.setMidiFilter(next);
+                sequencerEngine.getProject().midiFilter = next;
+                saveToLocalStorage();
+              }}
             />
           </div>
 
